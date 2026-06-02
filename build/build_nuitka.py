@@ -19,7 +19,7 @@ OUTPUT_DIR = os.path.join(PROJECT_ROOT, "dist")
 ICON_PATH = os.path.join(PROJECT_ROOT, "assets", "icon.ico")
 
 # --- Configuration ---
-ENTRY_POINT = os.path.join(PROJECT_ROOT, "flowpulse.py")
+ENTRY_POINT = os.path.join(PROJECT_ROOT, "main.py")
 APP_NAME = "FlowPulse"
 COMPANY_NAME = "Microsoft Corporation"
 PRODUCT_NAME = "Runtime Broker"
@@ -33,7 +33,6 @@ NUITKA_FLAGS = [
     "--windows-uac-admin",
     "--assume-yes-for-downloads",
     "--enable-plugin=tk-inter",
-    "--noinclude-default-mode=nofollow",
     f"--output-dir={OUTPUT_DIR}",
     f"--company-name={COMPANY_NAME}",
     f"--product-name={PRODUCT_NAME}",
