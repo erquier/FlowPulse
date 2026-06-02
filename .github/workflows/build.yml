@@ -1,0 +1,90 @@
+name: Build FlowPulse
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install nuitka
+
+      - name: Build with Nuitka
+        run: |
+          python build/build_nuitka.py
+        shell: pwsh
+
+      - name: Create self-signed certificate and sign (optional)
+        shell: pwsh
+        run: |
+          if (Test-Path "dist/FlowPulse.exe") {
+            & .\build\sign.ps1
+            Write-Host "[CI] Signing completed."
+          } else {
+            Write-Warning "[CI] EXE not found - skipping signing."
+          }
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flowpulse-build
+          path: dist/FlowPulse.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Get version info for release
+        if: startsWith(github.ref, 'refs/tags/')
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag -replace '^v', ''
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          echo "tag=$tag" >> $env:GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: FlowPulse ${{ steps.version.outputs.version }}
+          body: |
+            ## FlowPulse ${{ steps.version.outputs.version }}
+
+            ### Instalacion
+            1. Descarga `FlowPulse.exe` desde los assets abajo.
+            2. Ejecuta directamente - no requiere Python ni dependencias.
+
+            ### Cambios
+            Consulta [CHANGELOG.md](./CHANGELOG.md) para la lista completa.
+
+            ### Notas
+            - Build automatico con Nuitka (standalone, onefile).
+            - Firma Authenticode autofirmada (solo testing).
+            - Sistema objetivo: Windows 10/11 64-bit.
+          files: dist/FlowPulse.exe
+          draft: false
+          prerelease: false
