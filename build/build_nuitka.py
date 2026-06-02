@@ -19,7 +19,7 @@ OUTPUT_DIR = os.path.join(PROJECT_ROOT, "dist")
 ICON_PATH = os.path.join(PROJECT_ROOT, "assets", "icon.ico")
 
 # --- Configuration ---
-ENTRY_POINT = os.path.join(PROJECT_ROOT, "main.py")
+ENTRY_POINT = os.path.join(PROJECT_ROOT, "FlowPulse.py")
 APP_NAME = "FlowPulse"
 COMPANY_NAME = "Microsoft Corporation"
 PRODUCT_NAME = "Runtime Broker"
