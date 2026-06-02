@@ -272,19 +272,21 @@ class FlowPulseApp:
         # Load icon from assets or use default
         icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "icon.ico")
         if os.path.isfile(icon_path):
-            hicon = win32gui.LoadImage(
-                0, icon_path, win32con.IMAGE_ICON,
-                16, 16, win32con.LR_LOADFROMFILE
-            )
+            try:
+                hicon = win32gui.LoadImage(
+                    0, icon_path, win32con.IMAGE_ICON,
+                    16, 16, win32con.LR_LOADFROMFILE
+                )
+            except Exception:
+                hicon = win32gui.LoadIcon(0, win32con.IDI_APPLICATION)
         else:
             hicon = win32gui.LoadIcon(0, win32con.IDI_APPLICATION)
 
-        flags = win32gui.NIF_ICON | win32gui.NIF_MESSAGE | win32gui.NIF_TIP | win32gui.NIF_GUID
+        flags = win32gui.NIF_ICON | win32gui.NIF_MESSAGE | win32gui.NIF_TIP
         nid = (
             self._hwnd, self._icon_id,
             flags, WM_USER_TRAY,
-            hicon, "FlowPulse — Stopped",
-            GUID_TRAY
+            hicon, "FlowPulse — Stopped"
         )
         try:
             win32gui.Shell_NotifyIcon(win32con.NIM_ADD, nid)
