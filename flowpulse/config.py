@@ -73,7 +73,7 @@ class Config:
         """Persist current configuration to disk."""
         with self._lock:
             os.makedirs(_get_config_dir(), exist_ok=True)
-            tmp = self._path + ".tmp"
+            tmp = str(self._path) + ".tmp"
             with open(tmp, "w", encoding="utf-8") as fh:
                 json.dump(self._data, fh, indent=2, ensure_ascii=False)
             os.replace(tmp, self._path)
@@ -102,7 +102,7 @@ class Config:
     @property
     def path(self) -> str:
         """Path to the config file on disk."""
-        return self._path
+        return str(self._path)
 
     def __repr__(self) -> str:
         return f"Config(path={self._path!r}, loaded={self._loaded})"

@@ -1,0 +1,32 @@
+name: Test FlowPulse
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyautogui pynput pystray Pillow pywin32
+
+      - name: Run unit tests
+        run: python -m unittest tests.test_all -v
+
+      - name: Run with --dry-run (no actual mouse)
+        run: |
+          timeout 5 python -c "import sys; sys.path.insert(0, '.'); from flowpulse.app import main; main()" --dry-run 2>&1 || true

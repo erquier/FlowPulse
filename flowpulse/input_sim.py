@@ -1,21 +1,34 @@
-"""
-input_sim.py — Mouse/keyboard input simulation for FlowPulse.
+"""input_sim.py — Mouse/keyboard input simulation for FlowPulse.
 
 Wraps movement.generate_path() and pyautogui for safe, realistic input.
-Disables pyautogui.FAILSAFE at import time.
 """
-
 import random
 import time
 import math
 
-import pyautogui
-
 from flowpulse.movement import generate_path
 
-# Disable the failsafe (mouse corner panic) — intentional for security research
-pyautogui.FAILSAFE = False
-pyautogui.PAUSE = 0.0  # we manage our own delays
+try:
+    import pyautogui
+    HAS_PYAUTOGUI = True
+    pyautogui.FAILSAFE = False
+    pyautogui.PAUSE = 0.0
+except ImportError:
+    HAS_PYAUTOGUI = False
+    class pyautogui:
+        FAILSAFE = False
+        PAUSE = 0.0
+        @staticmethod
+        def moveTo(*a, **kw): pass
+        @staticmethod
+        def click(*a, **kw): pass
+        @staticmethod
+        def scroll(*a, **kw): pass
+        @staticmethod
+        def press(*a, **kw): pass
+        @staticmethod
+        def size():
+            return (1920, 1080)
 
 
 def safe_coords(screen_width=None, screen_height=None, margin_pct=10):

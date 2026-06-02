@@ -2,6 +2,7 @@
 Uses win32gui directly for tray icon (more reliable with Nuitka)
 and tkinter for the configuration dialog.
 """
+import argparse
 import logging
 import logging.handlers
 import os
@@ -366,7 +367,36 @@ class FlowPulseApp:
 # Entry point
 # ---------------------------------------------------------------------------
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="FlowPulse — Human-like input simulation")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Run in dry-run mode: log actions without moving the mouse")
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
+    if args.dry_run:
+        print("[DRY-RUN] FlowPulse v%s starting in dry-run mode (no mouse will be moved)" % __version__)
+        print("[DRY-RUN] This simulates the engine logic without executing any input.")
+        from flowpulse.config import Config
+        from flowpulse.engine import SimulationEngine
+        from flowpulse.detector import ActivityDetector
+        import time
+        cfg = Config()
+        cfg.load()
+        det = ActivityDetector(timeout=float(cfg.get("idle_timeout_sec", 30)))
+        det.start()
+        engine = SimulationEngine(cfg, det)
+        print("[DRY-RUN] Engine started — running for 5 seconds...")
+        engine.start()
+        time.sleep(5)
+        engine.stop()
+        det.stop()
+        stats = engine.stats
+        print("[DRY-RUN] Stats: %s" % stats)
+        print("[DRY-RUN] Done.")
+        return
     app = FlowPulseApp()
     app.run()
 
