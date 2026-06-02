@@ -2,7 +2,10 @@ __pycache__/
 *.pyc
 *.pyo
 dist/
-build/
+build/*.exe
+build/*.spec
+build/*.manifest
+build/*.rc
 *.spec
 *.exe
 *.log
