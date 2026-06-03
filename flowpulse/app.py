@@ -36,6 +36,11 @@ WM_USER_STOP = win32con.WM_USER + 5
 WM_USER_SHOW_LOG = win32con.WM_USER + 6
 GUID_TRAY = "{B8F3C0A0-9E3F-4A1D-9F2C-7B1E4A2D8C0F}"
 
+# NIM constants (some pywin32 builds lack these in win32con)
+NIM_ADD = 0
+NIM_MODIFY = 1
+NIM_DELETE = 2
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
@@ -252,6 +257,20 @@ class FlowPulseApp:
         if msg == WM_USER_SHOW_LOG:
             _open_log()
             return 0
+        if msg == win32con.WM_COMMAND:
+            # TrackPopupMenu sends WM_COMMAND, not the IDs directly
+            cmd = win32gui.LOWORD(wparam)
+            if cmd == WM_USER_START:
+                self._on_start()
+            elif cmd == WM_USER_STOP:
+                self._on_stop()
+            elif cmd == WM_USER_CONFIG:
+                self._on_config()
+            elif cmd == WM_USER_EXIT:
+                win32gui.PostMessage(hwnd, WM_USER_EXIT, 0, 0)
+            elif cmd == WM_USER_SHOW_LOG:
+                _open_log()
+            return 0
         if msg == WM_USER_TRAY:
             if lparam == win32con.WM_LBUTTONUP:
                 # Left click: show config
@@ -289,7 +308,7 @@ class FlowPulseApp:
             hicon, "FlowPulse — Stopped"
         )
         try:
-            win32gui.Shell_NotifyIcon(win32con.NIM_ADD, nid)
+            win32gui.Shell_NotifyIcon(NIM_ADD, nid)
             self._tray_visible = True
             logger.info("Tray icon added")
         except Exception as e:
@@ -299,7 +318,7 @@ class FlowPulseApp:
         if self._tray_visible:
             try:
                 nid = (self._hwnd, self._icon_id)
-                win32gui.Shell_NotifyIcon(win32con.NIM_DELETE, nid)
+                win32gui.Shell_NotifyIcon(NIM_DELETE, nid)
                 self._tray_visible = False
                 logger.info("Tray icon removed")
             except Exception as e:
@@ -312,7 +331,7 @@ class FlowPulseApp:
                 win32gui.NIF_TIP, 0, 0, text, ""
             )
             try:
-                win32gui.Shell_NotifyIcon(win32con.NIM_MODIFY, nid)
+                win32gui.Shell_NotifyIcon(NIM_MODIFY, nid)
             except Exception:
                 pass
 
