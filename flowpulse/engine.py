@@ -151,7 +151,11 @@ class SimulationEngine:
     # ------------------------------------------------------------------
 
     def _execute_burst(self) -> None:
-        """Perform a single burst of 8-15 pseudo-human input actions."""
+        """Perform a single burst of 8-15 pseudo-human input actions.
+
+        Aborts immediately if the user resumes activity mid-burst,
+        preventing interference with real mouse/keyboard input.
+        """
         moves = random.randint(
             int(self._config.get("burst_min_moves", 8)),
             int(self._config.get("burst_max_moves", 15)),
@@ -163,6 +167,11 @@ class SimulationEngine:
         for i in range(moves):
             if self._stop_event.is_set():
                 return
+
+            # --- Abort if user resumed activity mid-burst ---
+            if self._detector.is_user_active():
+                logger.debug("User active mid-burst — aborting remaining %d moves", moves - i)
+                break
 
             # --- Mouse move (always) ---
             dx = random.randint(-150, 150)
@@ -176,11 +185,19 @@ class SimulationEngine:
             with self._stats_lock:
                 self._stats.total_moves += 1
 
+            # --- Abort if mouse move triggered user-activity detection ---
+            if self._detector.is_user_active():
+                logger.debug("User active after mouse move — aborting burst")
+                break
+
             # --- Click (30 % chance) ---
             if random.random() < self._config.get("click_chance", 0.30):
                 pyautogui.click()
                 with self._stats_lock:
                     self._stats.total_moves += 1
+                if self._detector.is_user_active():
+                    logger.debug("User active after click — aborting burst")
+                    break
 
             # --- Scroll (20 % chance) ---
             if random.random() < self._config.get("scroll_chance", 0.20):
@@ -204,8 +221,21 @@ class SimulationEngine:
     # ------------------------------------------------------------------
 
     def _wait_with_abort(self, seconds: float) -> bool:
-        """Sleep for *seconds*, returning True if stop was requested."""
-        return self._stop_event.wait(seconds)
+        """Sleep for *seconds*, returning True if stop was requested.
+
+        Also aborts early if the user resumes activity, so a long pause
+        doesn't finish and start a new burst while the person is back.
+        """
+        deadline = time.time() + seconds
+        while time.time() < deadline:
+            if self._stop_event.is_set():
+                return True
+            if self._detector.is_user_active():
+                logger.debug("User active during pause — skipping remaining %.1f s",
+                             deadline - time.time())
+                return False  # don't stop, just end pause early
+            self._stop_event.wait(0.5)
+        return False
 
     def _update_state(self, state: str) -> None:
         with self._stats_lock:
