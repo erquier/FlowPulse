@@ -82,8 +82,23 @@ def _show_settings_dialog(config: Config) -> None:
     try:
         import tkinter as tk
         from tkinter import ttk
-    except ImportError:
+    except Exception:
         logger.warning("tkinter not available — cannot show settings dialog")
+        try:
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                "FlowPulse Settings requires tkinter, but it is blocked by\n"
+                "Windows Application Control policy.\n\n"
+                "To fix: add an exception for _tkinter.pyd in Windows Security\n"
+                "or run: python -m pip install --force-reinstall tk\n\n"
+                "Settings can also be edited directly in:\n"
+                "%APPDATA%\\FlowPulse\\config.json",
+                "FlowPulse — tkinter not available",
+                0x30  # MB_ICONWARNING
+            )
+        except Exception:
+            pass
         return
 
     root = tk.Tk()
