@@ -40,6 +40,18 @@ NIM_ADD = 0
 NIM_MODIFY = 1
 NIM_DELETE = 2
 
+# Default fallback values for slider fields (used when config has no value)
+_DEFAULT_FALLBACK = {
+    "burst_min_moves": 8,
+    "burst_max_moves": 15,
+    "read_pause_min_sec": 3,
+    "read_pause_max_sec": 12,
+    "long_pause_min_sec": 60,
+    "long_pause_max_sec": 120,
+    "mouse_speed_min": 0.1,
+    "mouse_speed_max": 0.6,
+}
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
@@ -129,7 +141,7 @@ def _show_settings_dialog(config: Config, on_close=None) -> None:
         var = tk.StringVar(value=str(config.get(key, "")))
         if from_ is not None:
             scale = ttk.Scale(frame, from_=from_, to=to_, orient=tk.HORIZONTAL, length=250)
-            scale.set(float(config.get(key, (from_ + to_) / 2)))
+            scale.set(float(config.get(key, _DEFAULT_FALLBACK.get(key, (from_ + to_) / 2))))
             scale.grid(row=row, column=1, sticky=tk.EW, padx=6, pady=3)
             lbl = ttk.Label(frame, text=var.get())
             lbl.grid(row=row, column=2, padx=3)
@@ -179,7 +191,18 @@ def _show_settings_dialog(config: Config, on_close=None) -> None:
             config.set(key, bool_fields[key].get())
         for key in fields:
             var, scale, lbl, fmt = fields[key]
-            config.set(key, int(var.get()) if fmt == "int" else float(var.get()))
+            raw = var.get()
+            try:
+                val = int(raw) if fmt == "int" else float(raw)
+            except ValueError:
+                logger.error("Invalid value for %s: %r", key, raw)
+                import tkinter.messagebox
+                tkinter.messagebox.showerror(
+                    "Invalid value",
+                    f"Invalid value for '{key}': {raw!r}\nPlease enter a valid {'integer' if fmt == 'int' else 'number'}."
+                )
+                return
+            config.set(key, val)
         config.save()
         logger.info("Settings saved via dialog")
         if on_close:
@@ -221,7 +244,7 @@ class FlowPulseApp:
         self._hwnd: Optional[int] = None
         self._icon_id = 1001
         self._tray_visible = False
-        self._settings_open = False
+        self._settings_open = threading.Event()
 
     def run(self) -> None:
         setup_logging(self.config)
@@ -237,6 +260,7 @@ class FlowPulseApp:
         wc.hbrBackground = win32con.COLOR_WINDOW
         wc.lpfnWndProc = self._window_proc
         class_atom = win32gui.RegisterClass(wc)
+        self._class_atom = class_atom
         self._hwnd = win32gui.CreateWindow(
             class_atom, "FlowPulse",
             win32con.WS_OVERLAPPEDWINDOW,
@@ -351,7 +375,7 @@ class FlowPulseApp:
         if self._tray_visible:
             nid = (
                 self._hwnd, self._icon_id,
-                win32gui.NIF_TIP, 0, 0, text, ""
+                win32gui.NIF_TIP, WM_USER_TRAY, 0, text
             )
             try:
                 win32gui.Shell_NotifyIcon(NIM_MODIFY, nid)
@@ -397,18 +421,29 @@ class FlowPulseApp:
             logger.info("Engine stopped")
 
     def _on_config(self) -> None:
-        if self._settings_open:
+        if self._settings_open.is_set():
             logger.info("Settings already open")
             return
         logger.info("Opening settings dialog")
-        self._settings_open = True
-        threading.Thread(target=_show_settings_dialog, args=(self.config, self._on_settings_closed), daemon=True).start()
+        self._settings_open.set()
+        threading.Thread(target=_show_settings_dialog, args=(self.config, self._on_settings_closed), daemon=False, name="SettingsDialog").start()
 
     def _on_settings_closed(self) -> None:
-        self._settings_open = False
+        self._settings_open.clear()
         logger.debug("Settings dialog closed")
 
     def _shutdown(self) -> None:
+        # Unregister the window class to clean up resources
+        if hasattr(self, '_class_atom') and self._hwnd:
+            win32gui.UnregisterClass(self._class_atom, win32api.GetModuleHandle(None))
+
+        # Wait for settings dialog to finish if open
+        for t in threading.enumerate():
+            if t.name == "SettingsDialog" and t.is_alive():
+                logger.info("Waiting for settings dialog to close...")
+                t.join(timeout=3)
+                if t.is_alive():
+                    logger.warning("Settings dialog did not close in time")
         self.engine.stop()
         self.detector.stop()
         self._hide_tray_icon()
@@ -439,7 +474,7 @@ def main() -> None:
         cfg.load()
         det = ActivityDetector(timeout=float(cfg.get("idle_timeout_sec", 30)))
         det.start()
-        engine = SimulationEngine(cfg, det)
+        engine = SimulationEngine(cfg, det, dry_run=True)
         print("[DRY-RUN] Engine started — running for 5 seconds...")
         engine.start()
         time.sleep(5)

@@ -1,9 +1,12 @@
 """Configuration manager for FlowPulse."""
 import json
+import logging
 import os
 import platform
 import threading
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG = {
     "burst_min_moves": 8,
@@ -18,13 +21,34 @@ DEFAULT_CONFIG = {
     "mouse_speed_min": 0.1,
     "mouse_speed_max": 0.6,
     "keyboard_enabled": True,
-    "focus_enabled": True,
+    "focus_enabled": True,  # NOTE: currently ignored (dead modules) — see engine.py
     "auto_start": False,
     "idle_timeout_sec": 30,
     "log_level": "INFO",
     "log_max_bytes": 1048576,
     "log_backup_count": 5,
     "enabled": True,
+}
+
+_CONFIG_SCHEMA: dict[str, tuple] = {
+    "burst_min_moves": (int, 8),
+    "burst_max_moves": (int, 15),
+    "read_pause_min_sec": ((int, float), 3),
+    "read_pause_max_sec": ((int, float), 12),
+    "long_pause_min_sec": ((int, float), 60),
+    "long_pause_max_sec": ((int, float), 300),
+    "mouse_speed_min": (float, 0.1),
+    "mouse_speed_max": (float, 0.6),
+    "idle_timeout_sec": ((int, float), 30),
+    "keyboard_every_n_moves": (int, 3),
+    "log_max_bytes": (int, 1048576),
+    "log_backup_count": (int, 5),
+    "click_chance": (float, 0.30),
+    "scroll_chance": (float, 0.20),
+    "keyboard_enabled": (bool, True),
+    "focus_enabled": (bool, True),  # NOTE: currently ignored (dead modules) — see engine.py
+    "auto_start": (bool, False),
+    "enabled": (bool, True),
 }
 
 
@@ -50,6 +74,7 @@ class Config:
         self._path = _get_config_path()
         self._data: dict[str, Any] = dict(DEFAULT_CONFIG)
         self._loaded = False
+        os.makedirs(_get_config_dir(), exist_ok=True)
 
     # ------------------------------------------------------------------
     # Public API
@@ -65,6 +90,19 @@ class Config:
                         stored = json.load(fh)
                     if isinstance(stored, dict):
                         self._data.update(stored)
+                        # Validate each key against schema; reset bad typed values
+                        for key, (expected_type, default) in _CONFIG_SCHEMA.items():
+                            value = self._data.get(key, default)
+                            if not isinstance(value, expected_type):
+                                logger.warning(
+                                    "Config key '%s' has wrong type %s (expected %s), "
+                                    "resetting to default %r",
+                                    key,
+                                    type(value).__name__,
+                                    expected_type,
+                                    default,
+                                )
+                                self._data[key] = default
             except (json.JSONDecodeError, OSError, PermissionError):
                 pass
             self._loaded = True
@@ -72,7 +110,6 @@ class Config:
     def save(self) -> None:
         """Persist current configuration to disk."""
         with self._lock:
-            os.makedirs(_get_config_dir(), exist_ok=True)
             tmp = str(self._path) + ".tmp"
             with open(tmp, "w", encoding="utf-8") as fh:
                 json.dump(self._data, fh, indent=2, ensure_ascii=False)

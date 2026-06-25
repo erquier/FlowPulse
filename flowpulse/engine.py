@@ -7,6 +7,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
+import string
+
 from flowpulse.config import Config
 from flowpulse.detector import ActivityDetector, mark_synthetic
 
@@ -15,6 +17,8 @@ logger = logging.getLogger(__name__)
 # Try importing simulation libraries; degrade gracefully.
 try:
     import pyautogui
+    pyautogui.FAILSAFE = False
+    pyautogui.PAUSE = 0.0
     HAS_PYAUTOGUI = True
 except ImportError:
     HAS_PYAUTOGUI = False
@@ -56,15 +60,16 @@ class SimulationEngine:
         burst_active  → read_pause → burst_active → … → long_pause → repeat
     """
 
-    def __init__(self, config: Config, detector: ActivityDetector) -> None:
+    def __init__(self, config: Config, detector: ActivityDetector, dry_run: bool = False) -> None:
         self._config = config
         self._detector = detector
+        self._dry_run = dry_run
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._start_time: float = 0.0
         self._stats = EngineStats()
         self._stats_lock = threading.Lock()
-        self._keys = "abcdefghijklmnopqrstuvwxyz ,./;'[]()-="
+        self._keys = string.ascii_letters + string.digits + " ,./;'[]()-=!@#$%^&*_+{}|:<>?"
 
     # ------------------------------------------------------------------
     # Public API
@@ -78,11 +83,11 @@ class SimulationEngine:
         self._stop_event.clear()
         self._start_time = time.time()
         self._update_state("running")
+        logger.info("Simulation engine started")
         self._thread = threading.Thread(target=self._run_loop,
                                         name="SimulationEngine",
                                         daemon=True)
         self._thread.start()
-        logger.info("Simulation engine started")
 
     def stop(self) -> None:
         """Signal the simulation thread to stop and wait for it."""
@@ -114,6 +119,12 @@ class SimulationEngine:
     def _run_loop(self) -> None:
         """Core simulation loop — runs until stop is requested."""
         while not self._stop_event.is_set():
+            # If engine is disabled, wait quietly.
+            if not self._config.get("enabled", True):
+                self._update_state("disabled")
+                self._stop_event.wait(5.0)
+                continue
+
             # If the user is active, wait quietly.
             if self._detector.is_user_active():
                 self._update_state("idle_wait")
@@ -169,7 +180,6 @@ class SimulationEngine:
             )
             self._update_state("burst")
             keyboard_every = int(self._config.get("keyboard_every_n_moves", 3))
-            screen_w, screen_h = pyautogui.size()
 
             for i in range(moves):
                 if self._stop_event.is_set():
@@ -188,7 +198,10 @@ class SimulationEngine:
                     self._config.get("mouse_speed_max", 0.6),
                 )
                 try:
-                    pyautogui.moveRel(dx, dy, duration=speed)
+                    if self._dry_run:
+                        logger.info("[DRY-RUN] pyautogui.moveRel(%d, %d, duration=%.2f)", dx, dy, speed)
+                    else:
+                        pyautogui.moveRel(dx, dy, duration=speed)
                 except Exception:
                     logger.error("pyautogui.moveRel failed")
                     break
@@ -204,7 +217,10 @@ class SimulationEngine:
                 # --- Click (30 % chance) ---
                 if random.random() < self._config.get("click_chance", 0.30):
                     try:
-                        pyautogui.click()
+                        if self._dry_run:
+                            logger.info("[DRY-RUN] pyautogui.click()")
+                        else:
+                            pyautogui.click()
                     except Exception:
                         logger.error("pyautogui.click failed")
                         break
@@ -217,7 +233,11 @@ class SimulationEngine:
                 # --- Scroll (20 % chance) ---
                 if random.random() < self._config.get("scroll_chance", 0.20):
                     try:
-                        pyautogui.scroll(random.choice([-3, -2, -1, 1, 2, 3]))
+                        scroll_amount = random.choice([-3, -2, -1, 1, 2, 3])
+                        if self._dry_run:
+                            logger.info("[DRY-RUN] pyautogui.scroll(%d)", scroll_amount)
+                        else:
+                            pyautogui.scroll(scroll_amount)
                     except Exception:
                         logger.error("pyautogui.scroll failed")
                         break
@@ -226,12 +246,18 @@ class SimulationEngine:
 
                 # --- Keyboard every N moves ---
                 if (i + 1) % keyboard_every == 0:
-                    key = random.choice(self._keys)
-                    try:
-                        pyautogui.press(key)
-                    except Exception:
-                        logger.error("pyautogui.press failed")
-                        break
+                    if self._config.get("keyboard_enabled", True):
+                        key = random.choice(self._keys)
+                        try:
+                            if self._dry_run:
+                                logger.info("[DRY-RUN] pyautogui.press(%s)", key)
+                            else:
+                                pyautogui.press(key)
+                        except Exception:
+                            logger.error("pyautogui.press failed")
+                            break
+                        with self._stats_lock:
+                            self._stats.total_moves += 1
 
                 # Small human-like delay between actions
                 time.sleep(random.uniform(0.05, 0.35))

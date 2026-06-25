@@ -79,25 +79,31 @@ except ImportError:
                 return False
 
 # ---------------------------------------------------------------------------
-# Thread-local synthetic-input flag
+# Cross-thread synthetic-input flag (threading.Event so pynput callbacks
+# in other threads can see it)
 # ---------------------------------------------------------------------------
 
-_synthetic_input = threading.local()
-_synthetic_input.active = False
+_synthetic_active = threading.Event()
 
 
 def mark_synthetic(on: bool) -> None:
-    """Mark the current thread as generating synthetic input.
+    """Mark (or unmark) the process as generating synthetic input.
 
     When set, pynput callbacks in ActivityDetector._on_input() will ignore
     events, preventing the simulation engine from detecting its own output
     as user activity.
+
+    Uses threading.Event so the flag is visible across all threads
+    (pynput runs callbacks in a different thread than the engine).
     """
-    _synthetic_input.active = on
+    if on:
+        _synthetic_active.set()
+    else:
+        _synthetic_active.clear()
 
 
 def is_synthetic() -> bool:
-    return getattr(_synthetic_input, "active", False)
+    return _synthetic_active.is_set()
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +176,7 @@ class ActivityDetector:
             lii.cbSize = ctypes.sizeof(_LASTINPUTINFO)
             if _GetLastInputInfo(ctypes.byref(lii)):
                 tick_now = _GetTickCount()
-                ms_since = (tick_now - lii.dwTime) & 0x7FFFFFFF
+                ms_since = (tick_now - lii.dwTime) & 0xFFFFFFFF
                 # Sanity check: GetLastInputInfo wraps at ~49.7 days
                 if 0 <= ms_since < 86_400_000:  # < 24 hours
                     win32_time = now - ms_since / 1000.0
