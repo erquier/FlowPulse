@@ -25,23 +25,32 @@ logger = logging.getLogger(__name__)
 # Win32 GetLastInputInfo — reliable, never disconnects
 # ---------------------------------------------------------------------------
 
-_user32 = ctypes.windll.user32
-_kernel32 = ctypes.windll.kernel32
+_HAS_WIN32_API = False
+_LASTINPUTINFO: type  # forward-declare for type-checkers
 
+try:
+    _user32 = ctypes.windll.user32
+    _kernel32 = ctypes.windll.kernel32
 
-class _LASTINPUTINFO(ctypes.Structure):
-    _fields_ = [
-        ("cbSize", ctypes.wintypes.UINT),
-        ("dwTime", ctypes.wintypes.DWORD),
-    ]
+    class _LASTINPUTINFO(ctypes.Structure):  # type: ignore[no-redef]
+        _fields_ = [
+            ("cbSize", ctypes.wintypes.UINT),
+            ("dwTime", ctypes.wintypes.DWORD),
+        ]
 
+    _GetLastInputInfo = _user32.GetLastInputInfo
+    _GetLastInputInfo.argtypes = [ctypes.POINTER(_LASTINPUTINFO)]  # type: ignore[valid-type]
+    _GetLastInputInfo.restype = ctypes.c_bool
 
-_GetLastInputInfo = _user32.GetLastInputInfo
-_GetLastInputInfo.argtypes = [ctypes.POINTER(_LASTINPUTINFO)]
-_GetLastInputInfo.restype = ctypes.c_bool
+    _GetTickCount = _kernel32.GetTickCount
+    _GetTickCount.restype = ctypes.wintypes.DWORD
 
-_GetTickCount = _kernel32.GetTickCount
-_GetTickCount.restype = ctypes.wintypes.DWORD
+    _HAS_WIN32_API = True
+except (AttributeError, OSError):
+    # Non-Windows system — GetLastInputInfo is unavailable.
+    # ActivityDetector falls back to pynput listeners only.
+    _GetLastInputInfo = None  # type: ignore[assignment]
+    _GetTickCount = None  # type: ignore[assignment]
 
 # ---------------------------------------------------------------------------
 # Pynput (optional, graceful degradation)
@@ -171,20 +180,21 @@ class ActivityDetector:
         now = time.time()
 
         # --- Layer 1: Win32 API (reliable, ignores synthetic input) ---
-        try:
-            lii = _LASTINPUTINFO()
-            lii.cbSize = ctypes.sizeof(_LASTINPUTINFO)
-            if _GetLastInputInfo(ctypes.byref(lii)):
-                tick_now = _GetTickCount()
-                ms_since = (tick_now - lii.dwTime) & 0xFFFFFFFF
-                # Sanity check: GetLastInputInfo wraps at ~49.7 days
-                if 0 <= ms_since < 86_400_000:  # < 24 hours
-                    win32_time = now - ms_since / 1000.0
-                    with self._lock:
-                        if win32_time > self._last_activity:
-                            self._last_activity = win32_time
-        except Exception:
-            pass
+        if _HAS_WIN32_API:
+            try:
+                lii = _LASTINPUTINFO()
+                lii.cbSize = ctypes.sizeof(_LASTINPUTINFO)
+                if _GetLastInputInfo(ctypes.byref(lii)):
+                    tick_now = _GetTickCount()
+                    ms_since = (tick_now - lii.dwTime) & 0xFFFFFFFF
+                    # Sanity check: GetLastInputInfo wraps at ~49.7 days
+                    if 0 <= ms_since < 86_400_000:  # < 24 hours
+                        win32_time = now - ms_since / 1000.0
+                        with self._lock:
+                            if win32_time > self._last_activity:
+                                self._last_activity = win32_time
+            except Exception:
+                pass
 
         # --- Layer 2: check against stored timestamp ---
         with self._lock:
