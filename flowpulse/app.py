@@ -7,7 +7,6 @@ import logging
 import logging.handlers
 import os
 import platform
-import signal
 import sys
 import threading
 from typing import Optional
@@ -77,7 +76,7 @@ def setup_logging(config: Config) -> None:
 # Settings dialog (tkinter)
 # ---------------------------------------------------------------------------
 
-def _show_settings_dialog(config: Config) -> None:
+def _show_settings_dialog(config: Config, on_close=None) -> None:
     """Open a tkinter settings dialog and apply changes."""
     try:
         import tkinter as tk
@@ -99,6 +98,8 @@ def _show_settings_dialog(config: Config) -> None:
             )
         except Exception:
             pass
+        if on_close:
+            on_close()
         return
 
     root = tk.Tk()
@@ -113,6 +114,8 @@ def _show_settings_dialog(config: Config) -> None:
             root.iconbitmap(ico)
         except Exception:
             pass
+
+    root.protocol("WM_DELETE_WINDOW", lambda: (on_close() if on_close else None, root.destroy()))
 
     frame = ttk.Frame(root, padding="12")
     frame.pack(fill=tk.BOTH, expand=True)
@@ -179,9 +182,13 @@ def _show_settings_dialog(config: Config) -> None:
             config.set(key, int(var.get()) if fmt == "int" else float(var.get()))
         config.save()
         logger.info("Settings saved via dialog")
+        if on_close:
+            on_close()
         root.destroy()
 
     def on_cancel():
+        if on_close:
+            on_close()
         root.destroy()
 
     btn_frame = ttk.Frame(frame)
@@ -214,6 +221,7 @@ class FlowPulseApp:
         self._hwnd: Optional[int] = None
         self._icon_id = 1001
         self._tray_visible = False
+        self._settings_open = False
 
     def run(self) -> None:
         setup_logging(self.config)
@@ -389,13 +397,21 @@ class FlowPulseApp:
             logger.info("Engine stopped")
 
     def _on_config(self) -> None:
+        if self._settings_open:
+            logger.info("Settings already open")
+            return
         logger.info("Opening settings dialog")
-        threading.Thread(target=_show_settings_dialog, args=(self.config,), daemon=True).start()
+        self._settings_open = True
+        threading.Thread(target=_show_settings_dialog, args=(self.config, self._on_settings_closed), daemon=True).start()
+
+    def _on_settings_closed(self) -> None:
+        self._settings_open = False
+        logger.debug("Settings dialog closed")
 
     def _shutdown(self) -> None:
-        self._hide_tray_icon()
         self.engine.stop()
         self.detector.stop()
+        self._hide_tray_icon()
         logger.info("FlowPulse shut down")
 
 

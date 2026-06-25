@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from flowpulse.config import Config
-from flowpulse.detector import ActivityDetector
+from flowpulse.detector import ActivityDetector, mark_synthetic
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ class SimulationEngine:
         self._start_time: float = 0.0
         self._stats = EngineStats()
         self._stats_lock = threading.Lock()
-        self._keys = "abcdefghijklmnopqrstuvwxyz ,./;'[]()-=."
+        self._keys = "abcdefghijklmnopqrstuvwxyz ,./;'[]()-="
 
     # ------------------------------------------------------------------
     # Public API
@@ -155,66 +155,91 @@ class SimulationEngine:
 
         Aborts immediately if the user resumes activity mid-burst,
         preventing interference with real mouse/keyboard input.
+
+        All synthetic input is wrapped in mark_synthetic() so the
+        activity detector does not mistake its own simulation for
+        real user activity.  Each pyautogui call is individually
+        try/except-ed to survive a broken or disconnected library.
         """
-        moves = random.randint(
-            int(self._config.get("burst_min_moves", 8)),
-            int(self._config.get("burst_max_moves", 15)),
-        )
-        self._update_state("burst")
-        keyboard_every = int(self._config.get("keyboard_every_n_moves", 3))
-        screen_w, screen_h = pyautogui.size()
-
-        for i in range(moves):
-            if self._stop_event.is_set():
-                return
-
-            # --- Abort if user resumed activity mid-burst ---
-            if self._detector.is_user_active():
-                logger.debug("User active mid-burst — aborting remaining %d moves", moves - i)
-                break
-
-            # --- Mouse move (always) ---
-            dx = random.randint(-150, 150)
-            dy = random.randint(-150, 150)
-            speed = random.uniform(
-                self._config.get("mouse_speed_min", 0.1),
-                self._config.get("mouse_speed_max", 0.6),
+        mark_synthetic(True)
+        try:
+            moves = random.randint(
+                int(self._config.get("burst_min_moves", 8)),
+                int(self._config.get("burst_max_moves", 15)),
             )
-            pyautogui.moveRel(dx, dy, duration=speed)
+            self._update_state("burst")
+            keyboard_every = int(self._config.get("keyboard_every_n_moves", 3))
+            screen_w, screen_h = pyautogui.size()
 
-            with self._stats_lock:
-                self._stats.total_moves += 1
+            for i in range(moves):
+                if self._stop_event.is_set():
+                    return
 
-            # --- Abort if mouse move triggered user-activity detection ---
-            if self._detector.is_user_active():
-                logger.debug("User active after mouse move — aborting burst")
-                break
-
-            # --- Click (30 % chance) ---
-            if random.random() < self._config.get("click_chance", 0.30):
-                pyautogui.click()
-                with self._stats_lock:
-                    self._stats.total_moves += 1
+                # --- Abort if user resumed activity mid-burst ---
                 if self._detector.is_user_active():
-                    logger.debug("User active after click — aborting burst")
+                    logger.debug("User active mid-burst — aborting remaining %d moves", moves - i)
                     break
 
-            # --- Scroll (20 % chance) ---
-            if random.random() < self._config.get("scroll_chance", 0.20):
-                pyautogui.scroll(random.choice([-3, -2, -1, 1, 2, 3]))
+                # --- Mouse move (always) ---
+                dx = random.randint(-150, 150)
+                dy = random.randint(-150, 150)
+                speed = random.uniform(
+                    self._config.get("mouse_speed_min", 0.1),
+                    self._config.get("mouse_speed_max", 0.6),
+                )
+                try:
+                    pyautogui.moveRel(dx, dy, duration=speed)
+                except Exception:
+                    logger.error("pyautogui.moveRel failed")
+                    break
+
                 with self._stats_lock:
                     self._stats.total_moves += 1
 
-            # --- Keyboard every N moves ---
-            if (i + 1) % keyboard_every == 0:
-                key = random.choice(self._keys)
-                pyautogui.press(key)
+                # --- Abort if mouse move triggered user-activity detection ---
+                if self._detector.is_user_active():
+                    logger.debug("User active after mouse move — aborting burst")
+                    break
 
-            # Small human-like delay between actions
-            time.sleep(random.uniform(0.05, 0.35))
+                # --- Click (30 % chance) ---
+                if random.random() < self._config.get("click_chance", 0.30):
+                    try:
+                        pyautogui.click()
+                    except Exception:
+                        logger.error("pyautogui.click failed")
+                        break
+                    with self._stats_lock:
+                        self._stats.total_moves += 1
+                    if self._detector.is_user_active():
+                        logger.debug("User active after click — aborting burst")
+                        break
 
-        with self._stats_lock:
-            self._stats.bursts_completed += 1
+                # --- Scroll (20 % chance) ---
+                if random.random() < self._config.get("scroll_chance", 0.20):
+                    try:
+                        pyautogui.scroll(random.choice([-3, -2, -1, 1, 2, 3]))
+                    except Exception:
+                        logger.error("pyautogui.scroll failed")
+                        break
+                    with self._stats_lock:
+                        self._stats.total_moves += 1
+
+                # --- Keyboard every N moves ---
+                if (i + 1) % keyboard_every == 0:
+                    key = random.choice(self._keys)
+                    try:
+                        pyautogui.press(key)
+                    except Exception:
+                        logger.error("pyautogui.press failed")
+                        break
+
+                # Small human-like delay between actions
+                time.sleep(random.uniform(0.05, 0.35))
+
+            with self._stats_lock:
+                self._stats.bursts_completed += 1
+        finally:
+            mark_synthetic(False)
 
     # ------------------------------------------------------------------
     # Helpers
