@@ -1,3 +1,4 @@
+# DEPRECATED — XOR obfuscation, process monitoring detection, and safe naming. Not integrated into the runtime. Kept for future use.
 """Stealth helpers: obfuscation, process detection, safe naming, install paths."""
 
 import os

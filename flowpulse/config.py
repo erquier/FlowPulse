@@ -21,7 +21,7 @@ DEFAULT_CONFIG = {
     "mouse_speed_min": 0.1,
     "mouse_speed_max": 0.6,
     "keyboard_enabled": True,
-    "focus_enabled": True,  # NOTE: currently ignored (dead modules) — see engine.py
+    "focus_enabled": True,  # NOTE: now active — see engine.py focus_rotate() call
     "auto_start": False,
     "idle_timeout_sec": 30,
     "log_level": "INFO",
@@ -46,7 +46,7 @@ _CONFIG_SCHEMA: dict[str, tuple] = {
     "click_chance": (float, 0.30),
     "scroll_chance": (float, 0.20),
     "keyboard_enabled": (bool, True),
-    "focus_enabled": (bool, True),  # NOTE: currently ignored (dead modules) — see engine.py
+    "focus_enabled": (bool, True),  # NOTE: now active — see engine.py focus_rotate() call
     "auto_start": (bool, False),
     "enabled": (bool, True),
 }

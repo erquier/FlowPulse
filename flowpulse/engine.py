@@ -11,6 +11,8 @@ import string
 
 from flowpulse.config import Config
 from flowpulse.detector import ActivityDetector, mark_synthetic
+from flowpulse.input_sim import mouse_move_to, mouse_click, mouse_scroll
+from flowpulse.window_focus import rotate as focus_rotate
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,9 @@ except ImportError:
         @staticmethod
         def typewrite(text):
             pass
+        @staticmethod
+        def position():
+            return (0, 0)
         @staticmethod
         def size():
             return (1920, 1080)
@@ -193,17 +198,16 @@ class SimulationEngine:
                 # --- Mouse move (always) ---
                 dx = random.randint(-150, 150)
                 dy = random.randint(-150, 150)
-                speed = random.uniform(
-                    self._config.get("mouse_speed_min", 0.1),
-                    self._config.get("mouse_speed_max", 0.6),
-                )
                 try:
+                    cur_x, cur_y = pyautogui.position()
+                    target_x = cur_x + dx
+                    target_y = cur_y + dy
                     if self._dry_run:
-                        logger.info("[DRY-RUN] pyautogui.moveRel(%d, %d, duration=%.2f)", dx, dy, speed)
+                        logger.info("[DRY-RUN] mouse_move_to(%d, %d)", target_x, target_y)
                     else:
-                        pyautogui.moveRel(dx, dy, duration=speed)
+                        mouse_move_to(target_x, target_y)
                 except Exception:
-                    logger.error("pyautogui.moveRel failed")
+                    logger.error("mouse_move_to failed")
                     break
 
                 with self._stats_lock:
@@ -218,11 +222,11 @@ class SimulationEngine:
                 if random.random() < self._config.get("click_chance", 0.30):
                     try:
                         if self._dry_run:
-                            logger.info("[DRY-RUN] pyautogui.click()")
+                            logger.info("[DRY-RUN] mouse_click()")
                         else:
-                            pyautogui.click()
+                            mouse_click()
                     except Exception:
-                        logger.error("pyautogui.click failed")
+                        logger.error("mouse_click failed")
                         break
                     with self._stats_lock:
                         self._stats.total_moves += 1
@@ -233,13 +237,12 @@ class SimulationEngine:
                 # --- Scroll (20 % chance) ---
                 if random.random() < self._config.get("scroll_chance", 0.20):
                     try:
-                        scroll_amount = random.choice([-3, -2, -1, 1, 2, 3])
                         if self._dry_run:
-                            logger.info("[DRY-RUN] pyautogui.scroll(%d)", scroll_amount)
+                            logger.info("[DRY-RUN] mouse_scroll()")
                         else:
-                            pyautogui.scroll(scroll_amount)
+                            mouse_scroll()
                     except Exception:
-                        logger.error("pyautogui.scroll failed")
+                        logger.error("mouse_scroll failed")
                         break
                     with self._stats_lock:
                         self._stats.total_moves += 1
@@ -264,6 +267,10 @@ class SimulationEngine:
 
             with self._stats_lock:
                 self._stats.bursts_completed += 1
+
+            # --- Window focus rotation ---
+            if self._config.get("focus_enabled", False):
+                focus_rotate()
         finally:
             mark_synthetic(False)
 

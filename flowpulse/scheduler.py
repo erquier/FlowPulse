@@ -1,3 +1,4 @@
+# DEPRECATED — this module is not used by the runtime engine. The SimulationEngine in engine.py has its own burst/pause loop. Kept for test compatibility (tests/test_all.py has 22 test methods for ActivityScheduler).
 """
 scheduler.py — Realistic activity burst scheduler for FlowPulse.
 
