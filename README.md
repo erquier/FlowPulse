@@ -60,7 +60,7 @@ El ejecutable se generará en `dist/FlowPulse.exe`.
 - `--standalone --onefile` — ejecutable único autocontenido
 - `--windows-disable-console` — sin ventana de terminal
 - `--windows-icon-from-ico` — icono personalizado
-- Metadatos falsos (Microsoft Corporation, Runtime Broker) para evasión básica
+- Metadatos legítimos (Erqlabs, FlowPulse v1.1.0)
 
 ### Firma digital (opcional)
 

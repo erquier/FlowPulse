@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""
-FlowPulse — Build script for Nuitka compilation.
+"""FlowPulse — Build script for Nuitka compilation.
 
 Generates a standalone, one-file Windows executable with:
-- Fake metadata (Microsoft Corporation, Runtime Broker)
+- Legitimate metadata (Erqlabs, FlowPulse)
 - Windows subsystem (no console)
 - UPX compression (if available)
 - Custom icon
@@ -21,16 +20,15 @@ ICON_PATH = os.path.join(PROJECT_ROOT, "assets", "icon.ico")
 # --- Configuration ---
 ENTRY_POINT = os.path.join(PROJECT_ROOT, "FlowPulse.py")
 APP_NAME = "FlowPulse"
-COMPANY_NAME = "Microsoft Corporation"
-PRODUCT_NAME = "Runtime Broker"
-FILE_VERSION = "10.0.19041.1"
-FILE_DESCRIPTION = "Runtime Broker"
+COMPANY_NAME = "Erqlabs"
+PRODUCT_NAME = "FlowPulse"
+FILE_VERSION = "1.1.0"
+FILE_DESCRIPTION = "FlowPulse — Human-like input simulation"
 
 NUITKA_FLAGS = [
     "--standalone",
     "--onefile",
     "--windows-disable-console",
-    "--windows-uac-admin",
     "--assume-yes-for-downloads",
     "--enable-plugin=tk-inter",
     f"--output-dir={OUTPUT_DIR}",
@@ -38,7 +36,7 @@ NUITKA_FLAGS = [
     f"--product-name={PRODUCT_NAME}",
     f"--file-version={FILE_VERSION}",
     f"--file-description={FILE_DESCRIPTION}",
-    f"--copyright=Microsoft Corporation. All rights reserved.",
+    f"--copyright=Erqlabs. All rights reserved.",
 ]
 
 # Add icon if it exists
