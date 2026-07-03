@@ -110,4 +110,16 @@ El repositorio incluye un workflow de GitHub Actions en `.github/workflows/build
 
 ---
 
+## Licencia
+
+MIT — ver [LICENSE](LICENSE).
+
+## Documentación adicional
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — módulos, arquitectura de detección de actividad de dos capas, y el diseño de scheduling humanizado.
+- [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — cada parámetro de configuración, su rango válido y su efecto.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — cómo levantar el entorno de desarrollo, correr tests/lint, y la postura ética del proyecto.
+
+---
+
 *FlowPulse — Input simulation for authorized security testing.*
