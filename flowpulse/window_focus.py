@@ -3,54 +3,18 @@
 import logging
 import random
 
+from flowpulse import win32_api
+
 logger = logging.getLogger(__name__)
 
-# Try to import Windows-specific APIs; gracefully degrade on other platforms.
-try:
-    import ctypes
-    import ctypes.wintypes
-
-    _user32 = ctypes.windll.user32
-    _EnumWindows = _user32.EnumWindows
-    _GetWindowTextW = _user32.GetWindowTextW
-    _GetWindowTextLengthW = _user32.GetWindowTextLengthW
-    _IsWindowVisible = _user32.IsWindowVisible
-    _SetForegroundWindow = _user32.SetForegroundWindow
-    _EnumWindowsProc = ctypes.WINFUNCTYPE(
-        ctypes.c_bool, ctypes.wintypes.HWND, ctypes.wintypes.LPARAM
-    )
-
-    HAS_WIN32 = True
-except (ImportError, AttributeError, OSError):
-    HAS_WIN32 = False
-
-
-def _enum_window_callback(hwnd: int, results: list[tuple[int, str]]) -> bool:
-    """Callback for EnumWindows: collect visible windows with titles."""
-    if _IsWindowVisible(hwnd):
-        length = _GetWindowTextLengthW(hwnd) + 1
-        buf = ctypes.create_unicode_buffer(length)
-        _GetWindowTextW(hwnd, buf, length)
-        title = buf.value.strip()
-        if title:
-            results.append((hwnd, title))
-    return True  # continue enumeration
+HAS_WIN32 = win32_api.HAS_WIN32
 
 
 def list_windows() -> list[tuple[int, str]]:
     """Return a list of (hwnd, title) for all visible top-level windows."""
-    results: list[tuple[int, str]] = []
     if not HAS_WIN32:
-        return results
-
-    # Capture `results` via closure rather than marshaling it through the
-    # EnumWindows LPARAM: LPARAM is a plain integer, so a ctypes.py_object
-    # passed there arrives in the callback as an int, not the original list.
-    def _callback(hwnd: int, _lparam: int) -> bool:
-        return _enum_window_callback(hwnd, results)
-
-    _EnumWindows(_EnumWindowsProc(_callback), 0)
-    return results
+        return []
+    return win32_api.list_visible_windows()
 
 
 def rotate() -> int | None:
@@ -72,7 +36,7 @@ def rotate() -> int | None:
     # Pick a random window
     hwnd, title = random.choice(windows)
     logger.info("Rotating focus to window: %s (hwnd=%d)", title, hwnd)
-    _SetForegroundWindow(hwnd)
+    win32_api.set_foreground_window(hwnd)
     return hwnd
 
 
@@ -86,7 +50,7 @@ def switch_to_window(title_substring: str) -> int | None:
 
     for hwnd, title in list_windows():
         if title_substring.lower() in title.lower():
-            _SetForegroundWindow(hwnd)
+            win32_api.set_foreground_window(hwnd)
             logger.info("Switched to window: %s (hwnd=%d)", title, hwnd)
             return hwnd
 
