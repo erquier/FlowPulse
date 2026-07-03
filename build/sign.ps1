@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     FlowPulse — Digital signature script using a self-signed certificate.
 
