@@ -70,6 +70,46 @@ _CONFIG_SCHEMA: dict[str, tuple] = {
     "enabled": (bool, True),
 }
 
+# Inclusive (min, max) bounds for numeric keys. Keys with no meaningful
+# range (bools, log_level) are omitted.
+_BOUNDS: dict[str, tuple[float, float]] = {
+    "burst_min_moves": (1, 1000),
+    "burst_max_moves": (1, 1000),
+    "read_pause_min_sec": (0, 3600),
+    "read_pause_max_sec": (0, 3600),
+    "long_pause_min_sec": (0, 86400),
+    "long_pause_max_sec": (0, 86400),
+    "burst_trigger_min": (1, 1000),
+    "burst_trigger_max": (1, 1000),
+    "move_interval_mean_sec": (0, 60),
+    "move_interval_sigma_sec": (0, 60),
+    "move_interval_min_sec": (0, 60),
+    "move_interval_max_sec": (0, 60),
+    "mouse_speed_min": (0.01, 10),
+    "mouse_speed_max": (0.01, 10),
+    "idle_timeout_sec": (0, 86400),
+    "keyboard_every_n_moves": (1, 1000),
+    "log_max_bytes": (1024, 1_073_741_824),
+    "log_backup_count": (0, 100),
+    "click_chance": (0.0, 1.0),
+    "scroll_chance": (0.0, 1.0),
+}
+
+# (min_key, max_key) pairs that must satisfy config[min_key] <= config[max_key].
+# Checked only in load() against the fully-merged config, not in set():
+# the settings dialog calls set() once per field in sequence, so eagerly
+# rejecting a single-field update based on the *other* field's current
+# value would spuriously fail legitimate edits (e.g. raising both bounds
+# of a pair, where the new min briefly exceeds the still-old max).
+_ORDERED_PAIRS: list[tuple[str, str]] = [
+    ("burst_min_moves", "burst_max_moves"),
+    ("read_pause_min_sec", "read_pause_max_sec"),
+    ("long_pause_min_sec", "long_pause_max_sec"),
+    ("burst_trigger_min", "burst_trigger_max"),
+    ("move_interval_min_sec", "move_interval_max_sec"),
+    ("mouse_speed_min", "mouse_speed_max"),
+]
+
 
 def _get_config_dir() -> str:
     """Return the platform-appropriate config directory."""
@@ -122,9 +162,58 @@ class Config:
                                     default,
                                 )
                                 self._data[key] = default
+                        self._enforce_bounds_locked()
+                        self._enforce_ordered_pairs_locked()
             except (json.JSONDecodeError, OSError, PermissionError):
                 pass
             self._loaded = True
+
+    def _enforce_bounds_locked(self) -> None:
+        """Reset any key outside its allowed range to the schema default.
+
+        Caller must hold self._lock. Bool/non-numeric keys have no entry
+        in _BOUNDS and are skipped.
+        """
+        for key, (lo, hi) in _BOUNDS.items():
+            value = self._data.get(key)
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                continue
+            if not (lo <= value <= hi):
+                default = _CONFIG_SCHEMA[key][1]
+                logger.warning(
+                    "Config key '%s' value %r out of range [%s, %s], resetting to default %r",
+                    key,
+                    value,
+                    lo,
+                    hi,
+                    default,
+                )
+                self._data[key] = default
+
+    def _enforce_ordered_pairs_locked(self) -> None:
+        """Reset both keys of a pair to their defaults if min > max.
+
+        Caller must hold self._lock.
+        """
+        for min_key, max_key in _ORDERED_PAIRS:
+            lo = self._data.get(min_key)
+            hi = self._data.get(max_key)
+            if not isinstance(lo, (int, float)) or not isinstance(hi, (int, float)):
+                continue
+            if lo > hi:
+                lo_default = _CONFIG_SCHEMA[min_key][1]
+                hi_default = _CONFIG_SCHEMA[max_key][1]
+                logger.warning(
+                    "Config '%s' (%r) > '%s' (%r), resetting both to defaults (%r, %r)",
+                    min_key,
+                    lo,
+                    max_key,
+                    hi,
+                    lo_default,
+                    hi_default,
+                )
+                self._data[min_key] = lo_default
+                self._data[max_key] = hi_default
 
     def save(self) -> None:
         """Persist current configuration to disk."""
@@ -140,7 +229,19 @@ class Config:
             return self._data.get(key, default)
 
     def set(self, key: str, value: Any) -> None:
-        """Set a config value and persist to disk."""
+        """Set a config value and persist to disk.
+
+        Raises ValueError if *key* has a known numeric range (see
+        _BOUNDS) and *value* falls outside it. Cross-field ordering
+        (e.g. burst_min_moves <= burst_max_moves) is intentionally not
+        checked here -- see _ORDERED_PAIRS' docstring note -- only
+        enforced in load().
+        """
+        bounds = _BOUNDS.get(key)
+        if bounds is not None and isinstance(value, (int, float)) and not isinstance(value, bool):
+            lo, hi = bounds
+            if not (lo <= value <= hi):
+                raise ValueError(f"'{key}' must be between {lo} and {hi}, got {value!r}")
         with self._lock:
             self._data[key] = value
         self.save()

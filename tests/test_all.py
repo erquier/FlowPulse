@@ -135,6 +135,39 @@ class TestMovement(unittest.TestCase):
         points = bezier_move(0, 0, 300, 300, duration_ms=None)
         self.assertGreater(len(points), 5)
 
+    def test_bezier_move_rejects_non_positive_duration(self):
+        from flowpulse.movement import bezier_move
+
+        with self.assertRaises(ValueError):
+            bezier_move(0, 0, 100, 100, duration_ms=0)
+        with self.assertRaises(ValueError):
+            bezier_move(0, 0, 100, 100, duration_ms=-50)
+
+    def test_bezier_move_rejects_non_positive_samples(self):
+        """samples=0 used to raise a ZeroDivisionError (t = i / samples)."""
+        from flowpulse.movement import bezier_move
+
+        with self.assertRaises(ValueError):
+            bezier_move(0, 0, 100, 100, samples=0)
+        with self.assertRaises(ValueError):
+            bezier_move(0, 0, 100, 100, samples=-3)
+
+    def test_generate_path_rejects_non_finite_coordinates(self):
+        from flowpulse.movement import generate_path
+
+        with self.assertRaises(ValueError):
+            generate_path(float("nan"), 0, 100, 100)
+        with self.assertRaises(ValueError):
+            generate_path(0, 0, float("inf"), 100)
+
+    def test_generate_path_allows_negative_coordinates(self):
+        """Negative coords are legitimate on multi-monitor setups (a
+        secondary monitor to the left of/above the primary)."""
+        from flowpulse.movement import generate_path
+
+        path = generate_path(-500, -300, 100, 100)
+        self.assertGreater(len(path), 3)
+
 
 class TestEngineScheduling(unittest.TestCase):
     """Test SimulationEngine's activity-scheduling helpers.
@@ -265,10 +298,10 @@ class TestConfig(unittest.TestCase):
 
         cfg = Config()
         cfg.load()
-        cfg.set("burst_min_moves", 20)
+        cfg.set("burst_min_moves", 10)  # stays below burst_max_moves' default (15)
         cfg2 = Config()
         cfg2.load()
-        self.assertEqual(cfg2.get("burst_min_moves"), 20)
+        self.assertEqual(cfg2.get("burst_min_moves"), 10)
 
     def test_get_default(self):
         from flowpulse.config import Config
@@ -284,9 +317,81 @@ class TestConfig(unittest.TestCase):
         self.assertIsInstance(cfg.path, str)
         self.assertTrue(cfg.path.endswith("config.json"))
 
+    def test_set_rejects_out_of_range_value(self):
+        from flowpulse.config import Config
+
+        cfg = Config()
+        cfg.load()
+        with self.assertRaises(ValueError):
+            cfg.set("click_chance", 5.0)
+        # Rejected value must not have been persisted
+        self.assertEqual(cfg.get("click_chance"), 0.30)
+
+    def test_set_accepts_boundary_values(self):
+        from flowpulse.config import Config
+
+        cfg = Config()
+        cfg.load()
+        cfg.set("click_chance", 1.0)
+        self.assertEqual(cfg.get("click_chance"), 1.0)
+        cfg.set("click_chance", 0.0)
+        self.assertEqual(cfg.get("click_chance"), 0.0)
+
+    def test_load_resets_out_of_range_value(self):
+        import json
+
+        from flowpulse.config import Config
+
+        with open(Path(self.tmpdir, "config.json"), "w", encoding="utf-8") as fh:
+            json.dump({"click_chance": 99.0}, fh)
+        cfg = Config()
+        cfg.load()
+        self.assertEqual(cfg.get("click_chance"), 0.30)
+
+    def test_load_resets_inverted_pair(self):
+        import json
+
+        from flowpulse.config import Config
+
+        with open(Path(self.tmpdir, "config.json"), "w", encoding="utf-8") as fh:
+            json.dump({"burst_min_moves": 50, "burst_max_moves": 10}, fh)
+        cfg = Config()
+        cfg.load()
+        self.assertEqual(cfg.get("burst_min_moves"), 8)
+        self.assertEqual(cfg.get("burst_max_moves"), 15)
+
+    def test_load_keeps_valid_ordered_pair(self):
+        import json
+
+        from flowpulse.config import Config
+
+        with open(Path(self.tmpdir, "config.json"), "w", encoding="utf-8") as fh:
+            json.dump({"burst_min_moves": 20, "burst_max_moves": 25}, fh)
+        cfg = Config()
+        cfg.load()
+        self.assertEqual(cfg.get("burst_min_moves"), 20)
+        self.assertEqual(cfg.get("burst_max_moves"), 25)
+
 
 class TestDetector(unittest.TestCase):
-    """Test the activity detector with mock pynput."""
+    """Test the activity detector with mock pynput.
+
+    is_user_active()'s Layer 1 queries the real Win32 GetLastInputInfo,
+    which picks up genuine mouse/keyboard activity on whatever machine
+    runs the suite -- without mocking it, these tests are flaky (pass in
+    isolation, intermittently fail when real input happens to land mid-run).
+    Patched out so behavior only depends on the timeout/_on_input() being
+    tested, not on real machine activity.
+    """
+
+    def setUp(self):
+        self.win32_patcher = patch(
+            "flowpulse.win32_api.milliseconds_since_last_input", return_value=None
+        )
+        self.win32_patcher.start()
+
+    def tearDown(self):
+        self.win32_patcher.stop()
 
     def test_init(self):
         from flowpulse.detector import ActivityDetector
@@ -467,6 +572,21 @@ class TestInputSim(unittest.TestCase):
         self.assertLessEqual(x, 1728)
         self.assertGreaterEqual(y, 108)
         self.assertLessEqual(y, 972)
+
+    @patch("flowpulse.input_sim.pyautogui")
+    def test_safe_coords_falls_back_when_size_raises(self, mock_pg):
+        """pyautogui.size() failing must not crash safe_coords() -- it
+        should fall back to 1920x1080 and log a warning instead."""
+        from flowpulse.input_sim import safe_coords
+
+        mock_pg.size.side_effect = RuntimeError("no display")
+        with self.assertLogs("flowpulse.input_sim", level="WARNING") as cm:
+            x, y = safe_coords()
+        self.assertGreaterEqual(x, 192)
+        self.assertLessEqual(x, 1728)
+        self.assertGreaterEqual(y, 108)
+        self.assertLessEqual(y, 972)
+        self.assertTrue(any("1920x1080" in msg for msg in cm.output))
 
 
 class TestEngineMocked(unittest.TestCase):

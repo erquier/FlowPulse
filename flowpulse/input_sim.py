@@ -3,10 +3,13 @@
 Wraps movement.generate_path() and pyautogui for safe, realistic input.
 """
 
+import logging
 import random
 import time
 
 from flowpulse.movement import generate_path
+
+logger = logging.getLogger(__name__)
 
 try:
     import pyautogui
@@ -74,7 +77,11 @@ def safe_coords(
     If screen dimensions not provided, queries pyautogui.size().
     """
     if screen_width is None or screen_height is None:
-        screen_width, screen_height = pyautogui.size()
+        try:
+            screen_width, screen_height = pyautogui.size()
+        except Exception:
+            logger.warning("pyautogui.size() failed, falling back to 1920x1080", exc_info=True)
+            screen_width, screen_height = 1920, 1080
 
     margin_x = screen_width * margin_pct / 100.0
     margin_y = screen_height * margin_pct / 100.0

@@ -60,6 +60,11 @@ def bezier_move(
     Returns list of (x, y, time_ratio) where time_ratio ∈ [0, 1].
     Overshoot and tremor are NOT applied here — use generate_path().
     """
+    if duration_ms is not None and duration_ms <= 0:
+        raise ValueError(f"duration_ms must be positive, got {duration_ms}")
+    if samples is not None and samples <= 0:
+        raise ValueError(f"samples must be positive, got {samples}")
+
     dist = math.hypot(bx - ax, by - ay)
 
     # scale duration if none given -- must run before the samples default
@@ -115,6 +120,12 @@ def generate_path(x1: float, y1: float, x2: float, y2: float) -> list[tuple[floa
 
     Returns list of (x, y, delay_ms) ready for playback.
     """
+    # Reject NaN/inf (e.g. from upstream division-by-zero elsewhere) but
+    # NOT negative coordinates -- multi-monitor Windows setups commonly
+    # place secondary monitors at negative x/y, which is legitimate input.
+    if not all(math.isfinite(v) for v in (x1, y1, x2, y2)):
+        raise ValueError(f"coordinates must be finite, got ({x1}, {y1}) -> ({x2}, {y2})")
+
     dist = math.hypot(x2 - x1, y2 - y1)
 
     # duration based on distance

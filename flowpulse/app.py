@@ -226,8 +226,9 @@ def _show_settings_dialog(config: Config, on_close: Callable[[], None] | None = 
             raw = var.get()
             try:
                 val = int(raw) if fmt == "int" else float(raw)
-            except ValueError:
-                logger.error("Invalid value for %s: %r", key, raw)
+                config.set(key, val)
+            except ValueError as e:
+                logger.error("Invalid value for %s: %r (%s)", key, raw, e)
                 import tkinter.messagebox
 
                 expected = "integer" if fmt == "int" else "number"
@@ -236,7 +237,6 @@ def _show_settings_dialog(config: Config, on_close: Callable[[], None] | None = 
                     f"Invalid value for '{key}': {raw!r}\nPlease enter a valid {expected}.",
                 )
                 return
-            config.set(key, val)
         config.save()
         logger.info("Settings saved via dialog")
         if on_close:
