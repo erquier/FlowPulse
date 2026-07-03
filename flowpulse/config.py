@@ -16,6 +16,18 @@ DEFAULT_CONFIG = {
     "read_pause_max_sec": 12,
     "long_pause_min_sec": 60,
     "long_pause_max_sec": 300,
+    # Long pause fires every burst_trigger_min-burst_trigger_max bursts
+    # (ported from the deprecated scheduler.py's burst_trigger_range),
+    # instead of after every single burst.
+    "burst_trigger_min": 3,
+    "burst_trigger_max": 5,
+    # Gaussian-clamped delay between actions inside a burst (ported from
+    # scheduler.py's next_activity_interval); replaces a flat uniform delay
+    # so intra-burst pacing looks less mechanically regular.
+    "move_interval_mean_sec": 0.2,
+    "move_interval_sigma_sec": 0.08,
+    "move_interval_min_sec": 0.05,
+    "move_interval_max_sec": 0.35,
     "click_chance": 0.30,
     "scroll_chance": 0.20,
     "keyboard_every_n_moves": 3,
@@ -38,6 +50,12 @@ _CONFIG_SCHEMA: dict[str, tuple] = {
     "read_pause_max_sec": ((int, float), 12),
     "long_pause_min_sec": ((int, float), 60),
     "long_pause_max_sec": ((int, float), 300),
+    "burst_trigger_min": (int, 3),
+    "burst_trigger_max": (int, 5),
+    "move_interval_mean_sec": ((int, float), 0.2),
+    "move_interval_sigma_sec": ((int, float), 0.08),
+    "move_interval_min_sec": ((int, float), 0.05),
+    "move_interval_max_sec": ((int, float), 0.35),
     "mouse_speed_min": (float, 0.1),
     "mouse_speed_max": (float, 0.6),
     "idle_timeout_sec": ((int, float), 30),

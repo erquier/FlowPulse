@@ -15,19 +15,23 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from flowpulse import __version__
 from flowpulse.config import Config
+from flowpulse.engine import SimulationEngine
 from flowpulse.movement import generate_path
-from flowpulse.scheduler import ActivityScheduler
 
 print(f"[SMOKE] FlowPulse v{__version__}")
 
-# Scheduler
+# Activity scheduling (SimulationEngine's ported burst/pause helpers)
 random.seed(42)
-s = ActivityScheduler()
-b = s.next_burst_duration()
-p = s.next_pause_duration()
-assert 5 <= b <= 15, f"burst {b} out of range"
-assert 2 <= p <= 5, f"pause {p} out of range"
-print(f"[SMOKE] scheduler OK: burst={b:.1f}min pause={p:.1f}min")
+_scheduling_cfg = Config()
+_scheduling_cfg.load()
+_engine = SimulationEngine(_scheduling_cfg, detector=None)
+factor = _engine._time_of_day_factor()
+interval = _engine._next_activity_interval(factor=factor)
+pause, is_long = _engine._next_pause_seconds()
+assert 0.0 <= factor <= 1.0, f"time-of-day factor {factor} out of range"
+assert interval > 0, f"activity interval {interval} not positive"
+assert pause > 0, f"pause {pause} not positive"
+print(f"[SMOKE] scheduling OK: factor={factor:.2f} interval={interval:.2f}s pause={pause:.1f}s")
 
 # Movement
 path = generate_path(100, 100, 500, 300)

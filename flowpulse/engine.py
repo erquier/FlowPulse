@@ -1,6 +1,8 @@
 """Simulation engine — human-like input bursts in a background thread."""
 
+import datetime
 import logging
+import math
 import random
 import string
 import threading
@@ -83,6 +85,8 @@ class SimulationEngine:
         self._stats = EngineStats()
         self._stats_lock = threading.Lock()
         self._keys = string.ascii_letters + string.digits + " ,./;'[]()-=!@#$%^&*_+{}|:<>?"
+        self._burst_count = 0
+        self._bursts_until_long = self._roll_bursts_until_long()
 
     # ------------------------------------------------------------------
     # Public API
@@ -95,6 +99,7 @@ class SimulationEngine:
             return
         self._stop_event.clear()
         self._start_time = time.time()
+        self._reset_scheduling_state()
         self._update_state("running")
         logger.info("Simulation engine started")
         self._thread = threading.Thread(target=self._run_loop, name="SimulationEngine", daemon=True)
@@ -136,6 +141,16 @@ class SimulationEngine:
                 self._stop_event.wait(5.0)
                 continue
 
+            # Off-hours safety net: below this activity level, don't act at
+            # all this cycle (in practice the lowest standard factor, 0.15
+            # for off-hours, stays above the 0.1 floor — see
+            # _time_of_day_factor — so this rarely trips; it's a floor for
+            # custom/future factor values, not the main humanization lever).
+            if not self._active_now():
+                self._update_state("idle_wait")
+                self._stop_event.wait(5.0)
+                continue
+
             # If the user is active, wait quietly.
             if self._detector.is_user_active():
                 self._update_state("idle_wait")
@@ -148,24 +163,11 @@ class SimulationEngine:
             if self._stop_event.is_set():
                 break
 
-            # ---- Read pause (short) ----
-            pause = random.uniform(
-                self._config.get("read_pause_min_sec", 3),
-                self._config.get("read_pause_max_sec", 12),
-            )
-            self._update_state("read_pause")
-            logger.debug("Read pause: %.1f s", pause)
+            # ---- Pause: short after most bursts, long every N bursts ----
+            pause, is_long = self._next_pause_seconds()
+            self._update_state("long_pause" if is_long else "read_pause")
+            logger.debug("%s pause: %.1f s", "Long" if is_long else "Read", pause)
             if self._wait_with_abort(pause):
-                break
-
-            # ---- Long pause ----
-            long_pause = random.uniform(
-                self._config.get("long_pause_min_sec", 60),
-                self._config.get("long_pause_max_sec", 300),
-            )
-            self._update_state("long_pause")
-            logger.debug("Long pause: %.1f s", long_pause)
-            if self._wait_with_abort(long_pause):
                 break
 
     # ------------------------------------------------------------------
@@ -267,8 +269,10 @@ class SimulationEngine:
                     with self._stats_lock:
                         self._stats.total_moves += 1
 
-                # Small human-like delay between actions
-                time.sleep(random.uniform(0.05, 0.35))
+                # Small human-like delay between actions — Gaussian-shaped
+                # and scaled by time-of-day (slower pacing off-hours/lunch)
+                # rather than a flat uniform delay.
+                time.sleep(self._next_activity_interval(self._time_of_day_factor()))
 
             with self._stats_lock:
                 self._stats.bursts_completed += 1
@@ -304,3 +308,84 @@ class SimulationEngine:
     def _update_state(self, state: str) -> None:
         with self._stats_lock:
             self._stats.current_state = state
+
+    # ------------------------------------------------------------------
+    # Activity scheduling (ported from the deprecated scheduler.py)
+    # ------------------------------------------------------------------
+
+    def _time_of_day_factor(self, dt: datetime.datetime | None = None) -> float:
+        """Return a multiplier in [0, 1] for activity level based on time of day.
+
+        08:00-11:00 and 14:00-17:00 are high activity (1.0), 12:00-14:00 is
+        a lunch dip (0.3), and all other hours are low (0.15). Used to slow
+        down (not stop) simulated activity outside typical working hours.
+        """
+        if dt is None:
+            dt = datetime.datetime.now()
+        fractional_hour = dt.hour + dt.minute / 60.0
+        if 8.0 <= fractional_hour < 11.0:
+            return 1.0
+        if 12.0 <= fractional_hour < 14.0:
+            return 0.3
+        if 14.0 <= fractional_hour < 17.0:
+            return 1.0
+        return 0.15
+
+    def _clamp_gaussian(self, mean: float, sigma: float, lo: float, hi: float) -> float:
+        """Sample a clamped Gaussian (Box-Muller) within [lo, hi]."""
+        while True:
+            u1 = random.random()
+            u2 = random.random()
+            val = mean + sigma * math.sqrt(-2.0 * math.log(u1 + 1e-12)) * math.cos(
+                2.0 * math.pi * u2
+            )
+            if lo <= val <= hi:
+                return val
+
+    def _next_activity_interval(self, factor: float = 1.0) -> float:
+        """Seconds to wait before the next action inside a burst, scaled by *factor*."""
+        base = self._clamp_gaussian(
+            self._config.get("move_interval_mean_sec", 0.2),
+            self._config.get("move_interval_sigma_sec", 0.08),
+            self._config.get("move_interval_min_sec", 0.05),
+            self._config.get("move_interval_max_sec", 0.35),
+        )
+        return base / max(factor, 0.05)
+
+    def _active_now(self, factor: float | None = None) -> bool:
+        """Return True if this is a reasonable time to act (factor >= 0.1)."""
+        if factor is None:
+            factor = self._time_of_day_factor()
+        return factor >= 0.1
+
+    def _roll_bursts_until_long(self) -> int:
+        lo = int(self._config.get("burst_trigger_min", 3))
+        hi = int(self._config.get("burst_trigger_max", 5))
+        return random.randint(lo, hi)
+
+    def _reset_scheduling_state(self) -> None:
+        """Reset the burst-trigger counter (called on each engine start)."""
+        self._burst_count = 0
+        self._bursts_until_long = self._roll_bursts_until_long()
+
+    def _next_pause_seconds(self) -> tuple[float, bool]:
+        """Return (duration_seconds, is_long_pause).
+
+        A long pause fires every N bursts (N re-rolled from
+        burst_trigger_min/max each time), a short read-pause otherwise —
+        instead of a long pause after every single burst.
+        """
+        self._burst_count += 1
+        if self._burst_count >= self._bursts_until_long:
+            self._burst_count = 0
+            self._bursts_until_long = self._roll_bursts_until_long()
+            long_pause = random.uniform(
+                self._config.get("long_pause_min_sec", 60),
+                self._config.get("long_pause_max_sec", 300),
+            )
+            return long_pause, True
+        short_pause = random.uniform(
+            self._config.get("read_pause_min_sec", 3),
+            self._config.get("read_pause_max_sec", 12),
+        )
+        return short_pause, False

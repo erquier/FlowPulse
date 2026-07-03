@@ -7,7 +7,7 @@ import random
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -124,131 +124,94 @@ class TestMovement(unittest.TestCase):
             self.assertAlmostEqual(y, 100, delta=0.5)
 
 
-class TestScheduler(unittest.TestCase):
-    """Test the activity burst scheduler."""
+class TestEngineScheduling(unittest.TestCase):
+    """Test SimulationEngine's activity-scheduling helpers.
+
+    These were ported from the deprecated scheduler.py's ActivityScheduler
+    (time-of-day factor, Gaussian-clamped intra-burst interval, and
+    burst-triggered long pauses), which engine.py's own burst/pause loop
+    had never actually reimplemented.
+    """
 
     def setUp(self):
         random.seed(42)
+        from flowpulse.config import Config
+        from flowpulse.engine import SimulationEngine
 
-    def test_activity_scheduler_default_params(self):
-        from flowpulse.scheduler import ActivityScheduler
-
-        sched = ActivityScheduler()
-        self.assertEqual(sched.burst_min, 5)
-        self.assertEqual(sched.burst_max, 15)
-        self.assertEqual(sched.pause_min, 2)
-        self.assertEqual(sched.pause_max, 5)
-
-    def test_burst_duration_in_range(self):
-        from flowpulse.scheduler import ActivityScheduler
-
-        sched = ActivityScheduler(burst_min=3, burst_max=8)
-        for _ in range(50):
-            dur = sched.next_burst_duration()
-            self.assertGreaterEqual(dur, 3)
-            self.assertLessEqual(dur, 8)
-
-    def test_pause_duration_normal(self):
-        from flowpulse.scheduler import ActivityScheduler
-
-        sched = ActivityScheduler(
-            pause_min=1,
-            pause_max=3,
-            long_pause_min=5,
-            long_pause_max=10,
-            burst_trigger_range=(5, 5),
-        )  # long only every 5
-        # First 4 pauses should be short
-        for _ in range(4):
-            dur = sched.next_pause_duration()
-            self.assertGreaterEqual(dur, 1)
-            self.assertLessEqual(dur, 3)
-
-    def test_long_pause_triggers(self):
-        from flowpulse.scheduler import ActivityScheduler
-
-        sched = ActivityScheduler(
-            pause_min=0.5,
-            pause_max=0.5,
-            long_pause_min=10,
-            long_pause_max=10,
-            burst_trigger_range=(2, 2),
-        )  # every 2 bursts
-        # After 2 pauses, 3rd should be long
-        dur1 = sched.next_pause_duration()  # count=1, short
-        self.assertAlmostEqual(dur1, 0.5, delta=0.1)
-        dur = sched.next_pause_duration()  # count=2 >= threshold, triggers long
-        self.assertAlmostEqual(dur, 10, delta=0.5)
-
-    def test_move_interval_gaussian_clamp(self):
-        from flowpulse.scheduler import ActivityScheduler
-
-        sched = ActivityScheduler(
-            move_interval_mean=45,
-            move_interval_sigma=12,
-            move_interval_min=15,
-            move_interval_max=120,
-        )
-        for _ in range(100):
-            interval = sched.next_activity_interval(factor=1.0)
-            self.assertGreaterEqual(interval, 15)
-            self.assertLessEqual(interval, 120)
-
-    def test_move_interval_lower_with_low_factor(self):
-        from flowpulse.scheduler import ActivityScheduler
-
-        sched = ActivityScheduler(move_interval_mean=45, move_interval_sigma=5)
-        fast = sched.next_activity_interval(factor=1.0)
-        slow = sched.next_activity_interval(factor=0.1)
-        self.assertGreater(slow, fast)
+        config = Config()
+        config.load()
+        self.engine = SimulationEngine(config, Mock())
 
     def test_time_of_day_factor_high(self):
         import datetime
 
-        from flowpulse.scheduler import ActivityScheduler
-
-        sched = ActivityScheduler()
-        # 10:00 AM should be high activity
         dt = datetime.datetime(2026, 6, 2, 10, 0)
-        f = sched.time_of_day_factor(dt)
-        self.assertAlmostEqual(f, 1.0, delta=0.1)
+        self.assertAlmostEqual(self.engine._time_of_day_factor(dt), 1.0, delta=0.1)
 
     def test_time_of_day_factor_lunch(self):
         import datetime
 
-        from flowpulse.scheduler import ActivityScheduler
-
-        sched = ActivityScheduler()
         dt = datetime.datetime(2026, 6, 2, 13, 0)
-        f = sched.time_of_day_factor(dt)
-        self.assertAlmostEqual(f, 0.3, delta=0.1)
+        self.assertAlmostEqual(self.engine._time_of_day_factor(dt), 0.3, delta=0.1)
 
     def test_active_now(self):
         import datetime
 
-        from flowpulse.scheduler import ActivityScheduler
-
-        sched = ActivityScheduler()
         dt = datetime.datetime(2026, 6, 2, 10, 0)
-        self.assertTrue(sched.active_now(factor=sched.time_of_day_factor(dt)))
+        factor = self.engine._time_of_day_factor(dt)
+        self.assertTrue(self.engine._active_now(factor=factor))
 
     def test_inactive_off_hours(self):
-        from flowpulse.scheduler import ActivityScheduler
+        # 3am factor is 0.15; _active_now(0.15) is still True since the
+        # floor is 0.1 -- test with an explicit low value instead.
+        self.assertFalse(self.engine._active_now(factor=0.05))
 
-        sched = ActivityScheduler()
-        # 3am factor is 0.15, active_now(0.15) returns True because threshold is 0.1
-        # Test with explicit low value
-        self.assertFalse(sched.active_now(factor=0.05))
+    def test_move_interval_gaussian_clamp(self):
+        lo = self.engine._config.get("move_interval_min_sec")
+        hi = self.engine._config.get("move_interval_max_sec")
+        for _ in range(100):
+            interval = self.engine._next_activity_interval(factor=1.0)
+            self.assertGreaterEqual(interval, lo)
+            self.assertLessEqual(interval, hi)
 
-    def test_reset(self):
-        from flowpulse.scheduler import ActivityScheduler
+    def test_move_interval_lower_with_low_factor(self):
+        fast = self.engine._next_activity_interval(factor=1.0)
+        slow = self.engine._next_activity_interval(factor=0.1)
+        self.assertGreater(slow, fast)
 
-        sched = ActivityScheduler(burst_trigger_range=(4, 6))  # high threshold
-        sched.next_pause_duration()  # count = 1
-        sched.next_pause_duration()  # count = 2
-        self.assertEqual(sched._burst_count, 2)
-        sched.reset()
-        self.assertEqual(sched._burst_count, 0)
+    def test_pause_duration_normal(self):
+        self.engine._config.set("burst_trigger_min", 5)
+        self.engine._config.set("burst_trigger_max", 5)  # long only every 5
+        self.engine._reset_scheduling_state()
+        lo = self.engine._config.get("read_pause_min_sec")
+        hi = self.engine._config.get("read_pause_max_sec")
+        # First 4 pauses should be short
+        for _ in range(4):
+            duration, is_long = self.engine._next_pause_seconds()
+            self.assertFalse(is_long)
+            self.assertGreaterEqual(duration, lo)
+            self.assertLessEqual(duration, hi)
+
+    def test_long_pause_triggers(self):
+        self.engine._config.set("burst_trigger_min", 2)
+        self.engine._config.set("burst_trigger_max", 2)  # every 2 bursts
+        self.engine._reset_scheduling_state()
+        # After 2 pauses, the 2nd should be long
+        _duration1, is_long1 = self.engine._next_pause_seconds()  # count=1, short
+        self.assertFalse(is_long1)
+        duration2, is_long2 = self.engine._next_pause_seconds()  # count=2 >= threshold
+        self.assertTrue(is_long2)
+        self.assertGreaterEqual(duration2, self.engine._config.get("long_pause_min_sec"))
+        self.assertLessEqual(duration2, self.engine._config.get("long_pause_max_sec"))
+
+    def test_reset_scheduling_state(self):
+        self.engine._config.set("burst_trigger_min", 4)
+        self.engine._config.set("burst_trigger_max", 6)
+        self.engine._next_pause_seconds()
+        self.engine._next_pause_seconds()
+        self.assertEqual(self.engine._burst_count, 2)
+        self.engine._reset_scheduling_state()
+        self.assertEqual(self.engine._burst_count, 0)
 
 
 class TestConfig(unittest.TestCase):

@@ -8,10 +8,6 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 [tool.ruff.lint.per-file-ignores]
 "tests/test_all.py" = ["E501"]
 "smoke_test.py" = ["E501"]
-# scheduler.py/stealth.py are deprecated and removed in a follow-up commit
-# (Phase 2); not worth cleaning up lint findings in code about to be deleted.
-"flowpulse/scheduler.py" = ["E501"]
-"flowpulse/stealth.py" = ["E501", "SIM110"]
 
 [tool.ruff.format]
 quote-style = "double"
