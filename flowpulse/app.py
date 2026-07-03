@@ -11,6 +11,7 @@ import os
 import platform
 import sys
 import threading
+from collections.abc import Callable
 
 import win32api
 import win32con
@@ -96,7 +97,7 @@ def setup_logging(config: Config) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _show_settings_dialog(config: Config, on_close=None) -> None:
+def _show_settings_dialog(config: Config, on_close: Callable[[], None] | None = None) -> None:
     """Open a tkinter settings dialog and apply changes."""
     try:
         import tkinter as tk
@@ -136,19 +137,30 @@ def _show_settings_dialog(config: Config, on_close=None) -> None:
         with contextlib.suppress(Exception):
             root.iconbitmap(ico)
 
-    root.protocol("WM_DELETE_WINDOW", lambda: (on_close() if on_close else None, root.destroy()))
+    def _on_window_close() -> None:
+        if on_close:
+            on_close()
+        root.destroy()
+
+    root.protocol("WM_DELETE_WINDOW", _on_window_close)
 
     frame = ttk.Frame(root, padding="12")
     frame.pack(fill=tk.BOTH, expand=True)
 
     row = 0
-    fields = {}
+    fields: dict[str, tuple[tk.StringVar, ttk.Scale | None, ttk.Label | None, str]] = {}
 
-    def add_field(label, key, from_=None, to_=None, fmt="int"):
+    def add_field(
+        label: str,
+        key: str,
+        from_: float | None = None,
+        to_: float | None = None,
+        fmt: str = "int",
+    ) -> None:
         nonlocal row
         ttk.Label(frame, text=label).grid(row=row, column=0, sticky=tk.W, pady=3)
         var = tk.StringVar(value=str(config.get(key, "")))
-        if from_ is not None:
+        if from_ is not None and to_ is not None:
             scale = ttk.Scale(frame, from_=from_, to=to_, orient=tk.HORIZONTAL, length=250)
             scale.set(float(config.get(key, _DEFAULT_FALLBACK.get(key, (from_ + to_) / 2))))
             scale.grid(row=row, column=1, sticky=tk.EW, padx=6, pady=3)
@@ -158,11 +170,12 @@ def _show_settings_dialog(config: Config, on_close=None) -> None:
         else:
             entry = ttk.Entry(frame, textvariable=var, width=30)
             entry.grid(row=row, column=1, sticky=tk.EW, padx=6, pady=3)
-            fields[key] = var
+            fields[key] = (var, None, None, fmt)
         row += 1
 
-    def on_scale_change(key):
+    def on_scale_change(key: str) -> None:
         var, scale, lbl, fmt = fields[key]
+        assert scale is not None and lbl is not None  # only called for scale-backed fields
         val = int(scale.get()) if fmt == "int" else round(scale.get(), 1)
         var.set(str(val))
         lbl.config(text=str(val))
@@ -201,14 +214,15 @@ def _show_settings_dialog(config: Config, on_close=None) -> None:
         "mouse_speed_max",
     ]:
         if key in fields:
-            var, scale, lbl, fmt = fields[key]
-            scale.config(command=lambda v, k=key: on_scale_change(k))
+            _, scale, _, _ = fields[key]
+            assert scale is not None
+            scale.config(command=lambda v, k=key: on_scale_change(k))  # type: ignore[misc]
 
-    def on_save():
+    def on_save() -> None:
         for key in bool_fields:
             config.set(key, bool_fields[key].get())
         for key in fields:
-            var, scale, lbl, fmt = fields[key]
+            var, _scale, _lbl, fmt = fields[key]
             raw = var.get()
             try:
                 val = int(raw) if fmt == "int" else float(raw)
@@ -229,7 +243,7 @@ def _show_settings_dialog(config: Config, on_close=None) -> None:
             on_close()
         root.destroy()
 
-    def on_cancel():
+    def on_cancel() -> None:
         if on_close:
             on_close()
         root.destroy()
@@ -244,7 +258,7 @@ def _show_settings_dialog(config: Config, on_close=None) -> None:
     root.mainloop()
 
 
-def _open_log():
+def _open_log() -> None:
     log_path = os.path.join(_get_log_dir(), "flowpulse.log")
     if os.path.isfile(log_path):
         os.startfile(log_path)
@@ -264,6 +278,7 @@ class FlowPulseApp:
         self._lock = threading.Lock()
         self._running = False
         self._hwnd: int | None = None
+        self._class_atom: int | None = None
         self._icon_id = 1001
         self._tray_visible = False
         self._settings_open = threading.Event()
@@ -460,7 +475,7 @@ class FlowPulseApp:
 
     def _shutdown(self) -> None:
         # Unregister the window class to clean up resources
-        if hasattr(self, "_class_atom") and self._hwnd:
+        if self._class_atom is not None and self._hwnd:
             win32gui.UnregisterClass(self._class_atom, win32api.GetModuleHandle(None))
 
         # Wait for settings dialog to finish if open
@@ -481,7 +496,7 @@ class FlowPulseApp:
 # ---------------------------------------------------------------------------
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="FlowPulse — Human-like input simulation")
     parser.add_argument(
         "--dry-run",

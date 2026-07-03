@@ -123,6 +123,18 @@ class TestMovement(unittest.TestCase):
             self.assertAlmostEqual(x, 100, delta=0.5)
             self.assertAlmostEqual(y, 100, delta=0.5)
 
+    def test_bezier_move_auto_duration(self):
+        """duration_ms=None (auto-scale by distance) must not crash.
+
+        Regression test: samples' default used to be computed from
+        duration_ms before duration_ms's own None-default was resolved,
+        raising TypeError whenever both were left as None.
+        """
+        from flowpulse.movement import bezier_move
+
+        points = bezier_move(0, 0, 300, 300, duration_ms=None)
+        self.assertGreater(len(points), 5)
+
 
 class TestEngineScheduling(unittest.TestCase):
     """Test SimulationEngine's activity-scheduling helpers.

@@ -30,6 +30,14 @@ except ImportError:
             pass
 
         @staticmethod
+        def mouseDown(*a, **kw):
+            pass
+
+        @staticmethod
+        def mouseUp(*a, **kw):
+            pass
+
+        @staticmethod
         def scroll(*a, **kw):
             pass
 
@@ -38,11 +46,27 @@ except ImportError:
             pass
 
         @staticmethod
+        def keyDown(*a, **kw):
+            pass
+
+        @staticmethod
+        def keyUp(*a, **kw):
+            pass
+
+        @staticmethod
+        def position():
+            return (0, 0)
+
+        @staticmethod
         def size():
             return (1920, 1080)
 
 
-def safe_coords(screen_width=None, screen_height=None, margin_pct=10):
+def safe_coords(
+    screen_width: int | None = None,
+    screen_height: int | None = None,
+    margin_pct: float = 10,
+) -> tuple[int, int]:
     """
     Generate random coordinates within a 'safe zone' of the screen.
 
@@ -60,7 +84,7 @@ def safe_coords(screen_width=None, screen_height=None, margin_pct=10):
     return int(x), int(y)
 
 
-def mouse_move_to(x, y):
+def mouse_move_to(x: float, y: float) -> None:
     """
     Move the mouse from the current position to (x, y) with a realistic
     Bezier path. Blocking — waits for the full movement to complete.
@@ -74,7 +98,7 @@ def mouse_move_to(x, y):
             time.sleep(delay_ms / 1000.0)
 
 
-def mouse_click(button="left", clicks=1):
+def mouse_click(button: str = "left", clicks: int = 1) -> None:
     """
     Perform a mouse click with realistic delays between press and release.
     """
@@ -90,7 +114,7 @@ def mouse_click(button="left", clicks=1):
             time.sleep(random.uniform(0.030, 0.080))
 
 
-def mouse_scroll(clicks=None):
+def mouse_scroll(clicks: int | None = None) -> None:
     """
     Perform a scroll action. If clicks is None, picks randomly 1-5.
     Positive = scroll up (Windows convention), negative = down.
@@ -102,17 +126,17 @@ def mouse_scroll(clicks=None):
     pyautogui.scroll(direction * clicks)
 
 
-def keyboard_f13():
+def keyboard_f13() -> None:
     """Press and release the F13 key."""
     pyautogui.press("f13")
 
 
-def keyboard_f15():
+def keyboard_f15() -> None:
     """Press and release the F15 key."""
     pyautogui.press("f15")
 
 
-def keyboard_modifier():
+def keyboard_modifier() -> None:
     """
     Press and release the left Shift key with a 50ms hold.
 

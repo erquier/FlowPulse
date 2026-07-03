@@ -9,19 +9,19 @@ import math
 import random
 
 
-def _smoothstep(t):
+def _smoothstep(t: float) -> float:
     """Hermite smoothstep: 3t² - 2t³."""
     return t * t * (3.0 - 2.0 * t)
 
 
-def _ease_in_out(t):
+def _ease_in_out(t: float) -> float:
     """Ease-in-out smoothstyle: accelerated start, decelerated end."""
     if t < 0.5:
         return 2.0 * t * t
     return 1.0 - (-2.0 * t + 2.0) ** 2 * 0.5
 
 
-def _perpendicular_offset(ax, ay, bx, by):
+def _perpendicular_offset(ax: float, ay: float, bx: float, by: float) -> tuple[float, float]:
     """
     Compute a control point offset perpendicular to the line A→B,
     scaled by 40% of the distance. Direction is randomised.
@@ -42,7 +42,14 @@ def _perpendicular_offset(ax, ay, bx, by):
     return px * offset, py * offset
 
 
-def bezier_move(ax, ay, bx, by, duration_ms=500, samples=None):
+def bezier_move(
+    ax: float,
+    ay: float,
+    bx: float,
+    by: float,
+    duration_ms: int | None = 500,
+    samples: int | None = None,
+) -> list[tuple[float, float, float]]:
     """
     Generate a cubic Bezier path from (ax,ay) to (bx,by).
 
@@ -53,12 +60,10 @@ def bezier_move(ax, ay, bx, by, duration_ms=500, samples=None):
     Returns list of (x, y, time_ratio) where time_ratio ∈ [0, 1].
     Overshoot and tremor are NOT applied here — use generate_path().
     """
-    if samples is None:
-        samples = max(10, int(duration_ms / 10))
-
     dist = math.hypot(bx - ax, by - ay)
 
-    # scale duration if none given
+    # scale duration if none given -- must run before the samples default
+    # below, which divides by duration_ms.
     if duration_ms is None:
         if dist < 100:
             duration_ms = random.randint(200, 400)
@@ -66,6 +71,9 @@ def bezier_move(ax, ay, bx, by, duration_ms=500, samples=None):
             duration_ms = random.randint(500, 1000)
         else:
             duration_ms = int(200 + (dist - 50) * 0.8)
+
+    if samples is None:
+        samples = max(10, int(duration_ms / 10))
 
     p_ox, p_oy = _perpendicular_offset(ax, ay, bx, by)
 
@@ -87,14 +95,14 @@ def bezier_move(ax, ay, bx, by, duration_ms=500, samples=None):
     return points
 
 
-def _gaussian_noise(mu=0.0, sigma=1.0):
+def _gaussian_noise(mu: float = 0.0, sigma: float = 1.0) -> float:
     """Box-Muller transform for Gaussian noise (no numpy)."""
     u1 = random.random()
     u2 = random.random()
     return mu + sigma * math.sqrt(-2.0 * math.log(u1 + 1e-12)) * math.cos(2.0 * math.pi * u2)
 
 
-def generate_path(x1, y1, x2, y2):
+def generate_path(x1: float, y1: float, x2: float, y2: float) -> list[tuple[float, float, int]]:
     """
     Generate a full movement path from (x1,y1) to (x2,y2).
 
@@ -128,7 +136,7 @@ def generate_path(x1, y1, x2, y2):
     # Generate Bezier to overshoot point
     raw = bezier_move(x1, y1, overshoot_x, overshoot_y, duration_ms, samples)
 
-    path = []
+    path: list[tuple[float, float, int]] = []
     total = len(raw)
 
     for idx, (rx, ry, t) in enumerate(raw):
