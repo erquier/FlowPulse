@@ -2,16 +2,14 @@
 
 import logging
 import random
+import string
 import threading
 import time
-from dataclasses import dataclass, field
-from typing import Optional
-
-import string
+from dataclasses import dataclass
 
 from flowpulse.config import Config
 from flowpulse.detector import ActivityDetector, mark_synthetic
-from flowpulse.input_sim import mouse_move_to, mouse_click, mouse_scroll
+from flowpulse.input_sim import mouse_click, mouse_move_to, mouse_scroll
 from flowpulse.window_focus import rotate as focus_rotate
 
 logger = logging.getLogger(__name__)
@@ -19,6 +17,7 @@ logger = logging.getLogger(__name__)
 # Try importing simulation libraries; degrade gracefully.
 try:
     import pyautogui
+
     pyautogui.FAILSAFE = False
     pyautogui.PAUSE = 0.0
     HAS_PYAUTOGUI = True
@@ -29,21 +28,27 @@ except ImportError:
         @staticmethod
         def moveRel(x, y, duration=0):
             pass
+
         @staticmethod
         def click():
             pass
+
         @staticmethod
         def scroll(clicks):
             pass
+
         @staticmethod
         def press(key):
             pass
+
         @staticmethod
         def typewrite(text):
             pass
+
         @staticmethod
         def position():
             return (0, 0)
+
         @staticmethod
         def size():
             return (1920, 1080)
@@ -52,9 +57,12 @@ except ImportError:
 @dataclass
 class EngineStats:
     """Exposed simulation statistics."""
+
     total_moves: int = 0
     uptime_seconds: float = 0.0
-    current_state: str = "stopped"  # stopped | running | idle_wait | burst | read_pause | long_pause
+    current_state: str = (
+        "stopped"  # stopped | running | idle_wait | burst | read_pause | long_pause
+    )
     bursts_completed: int = 0
 
 
@@ -69,7 +77,7 @@ class SimulationEngine:
         self._config = config
         self._detector = detector
         self._dry_run = dry_run
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._start_time: float = 0.0
         self._stats = EngineStats()
@@ -89,9 +97,7 @@ class SimulationEngine:
         self._start_time = time.time()
         self._update_state("running")
         logger.info("Simulation engine started")
-        self._thread = threading.Thread(target=self._run_loop,
-                                        name="SimulationEngine",
-                                        daemon=True)
+        self._thread = threading.Thread(target=self._run_loop, name="SimulationEngine", daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
@@ -248,19 +254,18 @@ class SimulationEngine:
                         self._stats.total_moves += 1
 
                 # --- Keyboard every N moves ---
-                if (i + 1) % keyboard_every == 0:
-                    if self._config.get("keyboard_enabled", True):
-                        key = random.choice(self._keys)
-                        try:
-                            if self._dry_run:
-                                logger.info("[DRY-RUN] pyautogui.press(%s)", key)
-                            else:
-                                pyautogui.press(key)
-                        except Exception:
-                            logger.error("pyautogui.press failed")
-                            break
-                        with self._stats_lock:
-                            self._stats.total_moves += 1
+                if (i + 1) % keyboard_every == 0 and self._config.get("keyboard_enabled", True):
+                    key = random.choice(self._keys)
+                    try:
+                        if self._dry_run:
+                            logger.info("[DRY-RUN] pyautogui.press(%s)", key)
+                        else:
+                            pyautogui.press(key)
+                    except Exception:
+                        logger.error("pyautogui.press failed")
+                        break
+                    with self._stats_lock:
+                        self._stats.total_moves += 1
 
                 # Small human-like delay between actions
                 time.sleep(random.uniform(0.05, 0.35))
@@ -289,8 +294,9 @@ class SimulationEngine:
             if self._stop_event.is_set():
                 return True
             if self._detector.is_user_active():
-                logger.debug("User active during pause — skipping remaining %.1f s",
-                             deadline - time.time())
+                logger.debug(
+                    "User active during pause — skipping remaining %.1f s", deadline - time.time()
+                )
                 return False  # don't stop, just end pause early
             self._stop_event.wait(0.5)
         return False

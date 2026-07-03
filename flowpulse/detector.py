@@ -12,12 +12,12 @@ Architecture:
   so the detector doesn't mistake its own simulation for user activity.
 """
 
+import contextlib
 import ctypes
 import ctypes.wintypes
 import logging
 import threading
 import time
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ try:
         ]
 
     _GetLastInputInfo = _user32.GetLastInputInfo
-    _GetLastInputInfo.argtypes = [ctypes.POINTER(_LASTINPUTINFO)]  # type: ignore[valid-type]
+    _GetLastInputInfo.argtypes = [ctypes.POINTER(_LASTINPUTINFO)]
     _GetLastInputInfo.restype = ctypes.c_bool
 
     _GetTickCount = _kernel32.GetTickCount
@@ -57,7 +57,7 @@ except (AttributeError, OSError):
 # ---------------------------------------------------------------------------
 
 try:
-    from pynput import mouse, keyboard
+    from pynput import keyboard, mouse
 
     HAS_PYNPUT = True
 except ImportError:
@@ -67,10 +67,13 @@ except ImportError:
         class Listener:
             def __init__(self, **kwargs):
                 pass
+
             def start(self):
                 pass
+
             def stop(self):
                 pass
+
             @property
             def running(self):
                 return False
@@ -79,10 +82,13 @@ except ImportError:
         class Listener:
             def __init__(self, **kwargs):
                 pass
+
             def start(self):
                 pass
+
             def stop(self):
                 pass
+
             @property
             def running(self):
                 return False
@@ -136,10 +142,10 @@ class ActivityDetector:
         self._lock = threading.Lock()
         self._timeout = timeout
         self._last_activity: float = time.time()
-        self._mouse_listener: Optional[mouse.Listener] = None
-        self._keyboard_listener: Optional[keyboard.Listener] = None
+        self._mouse_listener: mouse.Listener | None = None
+        self._keyboard_listener: keyboard.Listener | None = None
         self._running = False
-        self._watchdog_thread: Optional[threading.Thread] = None
+        self._watchdog_thread: threading.Thread | None = None
         self._watchdog_event = threading.Event()
 
     # ------------------------------------------------------------------
@@ -229,15 +235,11 @@ class ActivityDetector:
 
     def _stop_pynput(self) -> None:
         if self._mouse_listener is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self._mouse_listener.stop()
-            except Exception:
-                pass
         if self._keyboard_listener is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self._keyboard_listener.stop()
-            except Exception:
-                pass
 
     def _on_input(self, *args, **kwargs) -> None:
         """Callback fired by pynput on any mouse/keyboard event.
@@ -277,7 +279,8 @@ class ActivityDetector:
             if not ml_alive or not kl_alive:
                 logger.warning(
                     "Pynput listener(s) disconnected (mouse=%s, kbd=%s) — restarting",
-                    ml_alive, kl_alive,
+                    ml_alive,
+                    kl_alive,
                 )
                 self._stop_pynput()
                 self._start_pynput()

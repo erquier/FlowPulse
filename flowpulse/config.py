@@ -1,4 +1,5 @@
 """Configuration manager for FlowPulse."""
+
 import json
 import logging
 import os
@@ -86,7 +87,7 @@ class Config:
             self._data = dict(DEFAULT_CONFIG)
             try:
                 if os.path.isfile(self._path):
-                    with open(self._path, "r", encoding="utf-8") as fh:
+                    with open(self._path, encoding="utf-8") as fh:
                         stored = json.load(fh)
                     if isinstance(stored, dict):
                         self._data.update(stored)

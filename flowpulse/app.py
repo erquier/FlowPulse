@@ -2,14 +2,19 @@
 Uses win32gui directly for tray icon (more reliable with Nuitka)
 and tkinter for the configuration dialog.
 """
+
 import argparse
+import contextlib
 import logging
 import logging.handlers
 import os
 import platform
 import sys
 import threading
-from typing import Optional
+
+import win32api
+import win32con
+import win32gui
 
 from flowpulse import __version__
 from flowpulse.config import Config
@@ -21,10 +26,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Tray icon via win32gui (reliable with Nuitka)
 # ---------------------------------------------------------------------------
-
-import win32gui
-import win32con
-import win32api
 
 WM_TASKBAR_CREATED = win32api.RegisterWindowMessage("TaskbarCreated")
 WM_USER_TRAY = win32con.WM_USER + 1
@@ -56,6 +57,7 @@ _DEFAULT_FALLBACK = {
 # Logging
 # ---------------------------------------------------------------------------
 
+
 def _get_log_dir() -> str:
     if platform.system() == "Windows":
         base = os.environ.get("APPDATA", os.path.expanduser("~\\AppData\\Roaming"))
@@ -73,8 +75,12 @@ def setup_logging(config: Config) -> None:
     backup_count = int(config.get("log_backup_count", 5))
     root = logging.getLogger()
     root.setLevel(level)
-    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
-    fh = logging.handlers.RotatingFileHandler(log_path, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8")
+    fmt = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+    )
+    fh = logging.handlers.RotatingFileHandler(
+        log_path, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8"
+    )
     fh.setLevel(level)
     fh.setFormatter(fmt)
     root.addHandler(fh)
@@ -84,9 +90,11 @@ def setup_logging(config: Config) -> None:
     root.addHandler(ch)
     logger.info("FlowPulse v%s — logging to %s", __version__, log_path)
 
+
 # ---------------------------------------------------------------------------
 # Settings dialog (tkinter)
 # ---------------------------------------------------------------------------
+
 
 def _show_settings_dialog(config: Config, on_close=None) -> None:
     """Open a tkinter settings dialog and apply changes."""
@@ -97,6 +105,7 @@ def _show_settings_dialog(config: Config, on_close=None) -> None:
         logger.warning("tkinter not available — cannot show settings dialog")
         try:
             import ctypes
+
             ctypes.windll.user32.MessageBoxW(
                 0,
                 "FlowPulse Settings requires tkinter, but it is blocked by\n"
@@ -106,7 +115,7 @@ def _show_settings_dialog(config: Config, on_close=None) -> None:
                 "Settings can also be edited directly in:\n"
                 "%APPDATA%\\FlowPulse\\config.json",
                 "FlowPulse — tkinter not available",
-                0x30  # MB_ICONWARNING
+                0x30,  # MB_ICONWARNING
             )
         except Exception:
             pass
@@ -120,12 +129,12 @@ def _show_settings_dialog(config: Config, on_close=None) -> None:
     root.resizable(False, False)
 
     # Try to set icon if available
-    ico = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "icon.ico")
+    ico = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "icon.ico"
+    )
     if os.path.isfile(ico):
-        try:
+        with contextlib.suppress(Exception):
             root.iconbitmap(ico)
-        except Exception:
-            pass
 
     root.protocol("WM_DELETE_WINDOW", lambda: (on_close() if on_close else None, root.destroy()))
 
@@ -169,9 +178,11 @@ def _show_settings_dialog(config: Config, on_close=None) -> None:
 
     row += 1
     bool_fields = {}
-    for label, key in [("Simular teclado (F13)", "keyboard_enabled"),
-                       ("Rotar ventanas activas", "focus_enabled"),
-                       ("Auto-start al abrir", "auto_start")]:
+    for label, key in [
+        ("Simular teclado (F13)", "keyboard_enabled"),
+        ("Rotar ventanas activas", "focus_enabled"),
+        ("Auto-start al abrir", "auto_start"),
+    ]:
         var = tk.BooleanVar(value=config.get(key, False))
         cb = ttk.Checkbutton(frame, text=label, variable=var)
         cb.grid(row=row, column=0, columnspan=3, sticky=tk.W, pady=2)
@@ -179,9 +190,16 @@ def _show_settings_dialog(config: Config, on_close=None) -> None:
         row += 1
 
     # Add listeners for scale updates
-    for key in ["burst_min_moves", "burst_max_moves", "read_pause_min_sec",
-                "read_pause_max_sec", "long_pause_min_sec", "long_pause_max_sec",
-                "mouse_speed_min", "mouse_speed_max"]:
+    for key in [
+        "burst_min_moves",
+        "burst_max_moves",
+        "read_pause_min_sec",
+        "read_pause_max_sec",
+        "long_pause_min_sec",
+        "long_pause_max_sec",
+        "mouse_speed_min",
+        "mouse_speed_max",
+    ]:
         if key in fields:
             var, scale, lbl, fmt = fields[key]
             scale.config(command=lambda v, k=key: on_scale_change(k))
@@ -197,9 +215,11 @@ def _show_settings_dialog(config: Config, on_close=None) -> None:
             except ValueError:
                 logger.error("Invalid value for %s: %r", key, raw)
                 import tkinter.messagebox
+
+                expected = "integer" if fmt == "int" else "number"
                 tkinter.messagebox.showerror(
                     "Invalid value",
-                    f"Invalid value for '{key}': {raw!r}\nPlease enter a valid {'integer' if fmt == 'int' else 'number'}."
+                    f"Invalid value for '{key}': {raw!r}\nPlease enter a valid {expected}.",
                 )
                 return
             config.set(key, val)
@@ -229,9 +249,11 @@ def _open_log():
     if os.path.isfile(log_path):
         os.startfile(log_path)
 
+
 # ---------------------------------------------------------------------------
 # FlowPulseApp
 # ---------------------------------------------------------------------------
+
 
 class FlowPulseApp:
     def __init__(self) -> None:
@@ -241,7 +263,7 @@ class FlowPulseApp:
         self.engine = SimulationEngine(self.config, self.detector)
         self._lock = threading.Lock()
         self._running = False
-        self._hwnd: Optional[int] = None
+        self._hwnd: int | None = None
         self._icon_id = 1001
         self._tray_visible = False
         self._settings_open = threading.Event()
@@ -262,10 +284,17 @@ class FlowPulseApp:
         class_atom = win32gui.RegisterClass(wc)
         self._class_atom = class_atom
         self._hwnd = win32gui.CreateWindow(
-            class_atom, "FlowPulse",
+            class_atom,
+            "FlowPulse",
             win32con.WS_OVERLAPPEDWINDOW,
-            0, 0, 0, 0, 0, 0,
-            wc.hInstance, None
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            wc.hInstance,
+            None,
         )
         win32gui.UpdateWindow(self._hwnd)
         self._show_tray_icon()
@@ -336,12 +365,13 @@ class FlowPulseApp:
             return
 
         # Load icon from assets or use default
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "icon.ico")
+        icon_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "icon.ico"
+        )
         if os.path.isfile(icon_path):
             try:
                 hicon = win32gui.LoadImage(
-                    0, icon_path, win32con.IMAGE_ICON,
-                    16, 16, win32con.LR_LOADFROMFILE
+                    0, icon_path, win32con.IMAGE_ICON, 16, 16, win32con.LR_LOADFROMFILE
                 )
             except Exception:
                 hicon = win32gui.LoadIcon(0, win32con.IDI_APPLICATION)
@@ -349,11 +379,7 @@ class FlowPulseApp:
             hicon = win32gui.LoadIcon(0, win32con.IDI_APPLICATION)
 
         flags = win32gui.NIF_ICON | win32gui.NIF_MESSAGE | win32gui.NIF_TIP
-        nid = (
-            self._hwnd, self._icon_id,
-            flags, WM_USER_TRAY,
-            hicon, "FlowPulse — Stopped"
-        )
+        nid = (self._hwnd, self._icon_id, flags, WM_USER_TRAY, hicon, "FlowPulse — Stopped")
         try:
             win32gui.Shell_NotifyIcon(NIM_ADD, nid)
             self._tray_visible = True
@@ -373,14 +399,9 @@ class FlowPulseApp:
 
     def _update_tray_tip(self, text: str) -> None:
         if self._tray_visible:
-            nid = (
-                self._hwnd, self._icon_id,
-                win32gui.NIF_TIP, WM_USER_TRAY, 0, text
-            )
-            try:
+            nid = (self._hwnd, self._icon_id, win32gui.NIF_TIP, WM_USER_TRAY, 0, text)
+            with contextlib.suppress(Exception):
                 win32gui.Shell_NotifyIcon(NIM_MODIFY, nid)
-            except Exception:
-                pass
 
     def _show_context_menu(self) -> None:
         menu = win32gui.CreatePopupMenu()
@@ -426,7 +447,12 @@ class FlowPulseApp:
             return
         logger.info("Opening settings dialog")
         self._settings_open.set()
-        threading.Thread(target=_show_settings_dialog, args=(self.config, self._on_settings_closed), daemon=False, name="SettingsDialog").start()
+        threading.Thread(
+            target=_show_settings_dialog,
+            args=(self.config, self._on_settings_closed),
+            daemon=False,
+            name="SettingsDialog",
+        ).start()
 
     def _on_settings_closed(self) -> None:
         self._settings_open.clear()
@@ -434,7 +460,7 @@ class FlowPulseApp:
 
     def _shutdown(self) -> None:
         # Unregister the window class to clean up resources
-        if hasattr(self, '_class_atom') and self._hwnd:
+        if hasattr(self, "_class_atom") and self._hwnd:
             win32gui.UnregisterClass(self._class_atom, win32api.GetModuleHandle(None))
 
         # Wait for settings dialog to finish if open
@@ -454,22 +480,30 @@ class FlowPulseApp:
 # Entry point
 # ---------------------------------------------------------------------------
 
+
 def parse_args():
     parser = argparse.ArgumentParser(description="FlowPulse — Human-like input simulation")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Run in dry-run mode: log actions without moving the mouse")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run in dry-run mode: log actions without moving the mouse",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     if args.dry_run:
-        print("[DRY-RUN] FlowPulse v%s starting in dry-run mode (no mouse will be moved)" % __version__)
+        print(
+            f"[DRY-RUN] FlowPulse v{__version__} starting in dry-run mode (no mouse will be moved)"
+        )
         print("[DRY-RUN] This simulates the engine logic without executing any input.")
-        from flowpulse.config import Config
-        from flowpulse.engine import SimulationEngine
-        from flowpulse.detector import ActivityDetector
         import time
+
+        from flowpulse.config import Config
+        from flowpulse.detector import ActivityDetector
+        from flowpulse.engine import SimulationEngine
+
         cfg = Config()
         cfg.load()
         det = ActivityDetector(timeout=float(cfg.get("idle_timeout_sec", 30)))
@@ -481,7 +515,7 @@ def main() -> None:
         engine.stop()
         det.stop()
         stats = engine.stats
-        print("[DRY-RUN] Stats: %s" % stats)
+        print(f"[DRY-RUN] Stats: {stats}")
         print("[DRY-RUN] Done.")
         return
     app = FlowPulseApp()

@@ -2,30 +2,41 @@
 
 Wraps movement.generate_path() and pyautogui for safe, realistic input.
 """
+
 import random
 import time
-import math
 
 from flowpulse.movement import generate_path
 
 try:
     import pyautogui
+
     HAS_PYAUTOGUI = True
     pyautogui.FAILSAFE = False
     pyautogui.PAUSE = 0.0
 except ImportError:
     HAS_PYAUTOGUI = False
-    class pyautogui:
+
+    class pyautogui:  # type: ignore[no-redef]
         FAILSAFE = False
         PAUSE = 0.0
+
         @staticmethod
-        def moveTo(*a, **kw): pass
+        def moveTo(*a, **kw):
+            pass
+
         @staticmethod
-        def click(*a, **kw): pass
+        def click(*a, **kw):
+            pass
+
         @staticmethod
-        def scroll(*a, **kw): pass
+        def scroll(*a, **kw):
+            pass
+
         @staticmethod
-        def press(*a, **kw): pass
+        def press(*a, **kw):
+            pass
+
         @staticmethod
         def size():
             return (1920, 1080)

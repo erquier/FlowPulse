@@ -4,11 +4,12 @@
 import os
 import platform
 import subprocess
-from typing import Iterator, List
+from collections.abc import Iterator
 
 # ---------------------------------------------------------------------------
 # XOR obfuscation with rotating key
 # ---------------------------------------------------------------------------
+
 
 def _xor_rotate(data: bytes, key: bytes) -> bytes:
     """XOR *data* with *key*, rotating the key cyclically."""
@@ -37,12 +38,14 @@ def deobfuscate(hex_str: str, key: bytes = b"FlowPulse2024!@#$") -> str:
 # Process / monitoring detection (Windows-only meaningful)
 # ---------------------------------------------------------------------------
 
-MONITORING_PROCESS_NAMES = frozenset({
-    "TRAgent.exe",
-    "Teramind.exe",
-    "TRAgent",
-    "Teramind",
-})
+MONITORING_PROCESS_NAMES = frozenset(
+    {
+        "TRAgent.exe",
+        "Teramind.exe",
+        "TRAgent",
+        "Teramind",
+    }
+)
 
 
 def _running_processes() -> Iterator[str]:
@@ -89,7 +92,7 @@ def is_monitoring_running() -> bool:
 # Safe / generic Windows executable names
 # ---------------------------------------------------------------------------
 
-_SAFE_NAMES: List[str] = [
+_SAFE_NAMES: list[str] = [
     "WindowsAssistant",
     "SystemHelper",
     "BackgroundHost",
@@ -104,12 +107,14 @@ _SAFE_NAMES: List[str] = [
 def safe_exit_name() -> str:
     """Return a generic, non-suspicious Windows-style process name."""
     import random
+
     return random.choice(_SAFE_NAMES)
 
 
 # ---------------------------------------------------------------------------
 # Install path
 # ---------------------------------------------------------------------------
+
 
 def get_install_path() -> str:
     """Return the FlowPulse install directory (under %APPDATA% on Windows)."""

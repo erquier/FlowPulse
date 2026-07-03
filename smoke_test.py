@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Quick smoke test for FlowPulse logic components."""
-import sys
+
 import os
+import random
+import sys
 
 # Windows consoles often default to a legacy codepage (e.g. cp1252) that
 # can't encode the checkmark below; force UTF-8 so this runs the same in
@@ -11,15 +13,14 @@ if hasattr(sys.stdout, "reconfigure"):
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from flowpulse.config import Config
-from flowpulse.scheduler import ActivityScheduler
-from flowpulse.movement import generate_path
 from flowpulse import __version__
+from flowpulse.config import Config
+from flowpulse.movement import generate_path
+from flowpulse.scheduler import ActivityScheduler
 
 print(f"[SMOKE] FlowPulse v{__version__}")
 
 # Scheduler
-import random
 random.seed(42)
 s = ActivityScheduler()
 b = s.next_burst_duration()
@@ -31,7 +32,9 @@ print(f"[SMOKE] scheduler OK: burst={b:.1f}min pause={p:.1f}min")
 # Movement
 path = generate_path(100, 100, 500, 300)
 assert len(path) > 5, f"path too short: {len(path)}"
-print(f"[SMOKE] movement OK: {len(path)} path points, ends at ({path[-1][0]:.0f},{path[-1][1]:.0f})")
+print(
+    f"[SMOKE] movement OK: {len(path)} path points, ends at ({path[-1][0]:.0f},{path[-1][1]:.0f})"
+)
 
 # Config
 cfg = Config()

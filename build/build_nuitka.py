@@ -8,10 +8,10 @@ Generates a standalone, one-file Windows executable with:
 - Custom icon
 """
 
-import subprocess
-import sys
 import os
 import platform
+import subprocess
+import sys
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "dist")
@@ -36,7 +36,7 @@ NUITKA_FLAGS = [
     f"--product-name={PRODUCT_NAME}",
     f"--file-version={FILE_VERSION}",
     f"--file-description={FILE_DESCRIPTION}",
-    f"--copyright=Erqlabs. All rights reserved.",
+    "--copyright=Erqlabs. All rights reserved.",
 ]
 
 # Add icon if it exists
@@ -67,14 +67,16 @@ def main():
         sys.exit(1)
 
     if platform.system() != "Windows":
-        print("[WARN] This build script is designed for Windows. "
-              "Cross-compilation is not supported. Run on a Windows host.")
+        print(
+            "[WARN] This build script is designed for Windows. "
+            "Cross-compilation is not supported. Run on a Windows host."
+        )
 
     cmd = [sys.executable or "python", "-m", "nuitka", ENTRY_POINT] + NUITKA_FLAGS
 
     print(f"[BUILD] {APP_NAME} v{FILE_VERSION}")
     print(f"[BUILD] Entry point: {ENTRY_POINT}")
-    print(f"[BUILD] Command:")
+    print("[BUILD] Command:")
     print(f"  {' '.join(cmd)}")
     print("-" * 60)
 

@@ -6,9 +6,9 @@ Distributes mouse/keyboard actions in bursts separated by pauses,
 with time-of-day activity factors and long-pause recovery intervals.
 """
 
+import datetime
 import math
 import random
-import datetime
 
 
 def _clamp_gaussian(mean, sigma, lo, hi):
@@ -16,9 +16,7 @@ def _clamp_gaussian(mean, sigma, lo, hi):
     while True:
         u1 = random.random()
         u2 = random.random()
-        val = mean + sigma * math.sqrt(-2.0 * math.log(u1 + 1e-12)) * math.cos(
-            2.0 * math.pi * u2
-        )
+        val = mean + sigma * math.sqrt(-2.0 * math.log(u1 + 1e-12)) * math.cos(2.0 * math.pi * u2)
         if lo <= val <= hi:
             return val
 
@@ -68,9 +66,7 @@ class ActivityScheduler:
         self.move_interval_max = move_interval_max
 
         self._burst_count = 0
-        self._bursts_until_long = random.randint(
-            self.burst_trigger_lo, self.burst_trigger_hi
-        )
+        self._bursts_until_long = random.randint(self.burst_trigger_lo, self.burst_trigger_hi)
 
     def time_of_day_factor(self, dt=None):
         """
@@ -124,9 +120,7 @@ class ActivityScheduler:
         self._burst_count += 1
         if self._burst_count >= self._bursts_until_long:
             self._burst_count = 0
-            self._bursts_until_long = random.randint(
-                self.burst_trigger_lo, self.burst_trigger_hi
-            )
+            self._bursts_until_long = random.randint(self.burst_trigger_lo, self.burst_trigger_hi)
             return self._next_long_pause()
         return random.uniform(self.pause_min, self.pause_max)
 
@@ -137,9 +131,7 @@ class ActivityScheduler:
     def reset(self):
         """Reset internal burst counter."""
         self._burst_count = 0
-        self._bursts_until_long = random.randint(
-            self.burst_trigger_lo, self.burst_trigger_hi
-        )
+        self._bursts_until_long = random.randint(self.burst_trigger_lo, self.burst_trigger_hi)
 
     def active_now(self, factor=None):
         """

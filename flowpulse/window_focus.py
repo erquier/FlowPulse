@@ -2,7 +2,6 @@
 
 import logging
 import random
-from typing import List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -17,16 +16,16 @@ try:
     _GetWindowTextLengthW = _user32.GetWindowTextLengthW
     _IsWindowVisible = _user32.IsWindowVisible
     _SetForegroundWindow = _user32.SetForegroundWindow
-    _EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool,
-                                          ctypes.wintypes.HWND,
-                                          ctypes.wintypes.LPARAM)
+    _EnumWindowsProc = ctypes.WINFUNCTYPE(
+        ctypes.c_bool, ctypes.wintypes.HWND, ctypes.wintypes.LPARAM
+    )
 
     HAS_WIN32 = True
 except (ImportError, AttributeError, OSError):
     HAS_WIN32 = False
 
 
-def _enum_window_callback(hwnd: int, results: List[Tuple[int, str]]) -> bool:
+def _enum_window_callback(hwnd: int, results: list[tuple[int, str]]) -> bool:
     """Callback for EnumWindows: collect visible windows with titles."""
     if _IsWindowVisible(hwnd):
         length = _GetWindowTextLengthW(hwnd) + 1
@@ -38,9 +37,9 @@ def _enum_window_callback(hwnd: int, results: List[Tuple[int, str]]) -> bool:
     return True  # continue enumeration
 
 
-def list_windows() -> List[Tuple[int, str]]:
+def list_windows() -> list[tuple[int, str]]:
     """Return a list of (hwnd, title) for all visible top-level windows."""
-    results: List[Tuple[int, str]] = []
+    results: list[tuple[int, str]] = []
     if not HAS_WIN32:
         return results
 
@@ -54,7 +53,7 @@ def list_windows() -> List[Tuple[int, str]]:
     return results
 
 
-def rotate() -> Optional[int]:
+def rotate() -> int | None:
     """Switch focus to a random visible window.
 
     Returns the HWND of the newly focused window, or None if:
@@ -77,7 +76,7 @@ def rotate() -> Optional[int]:
     return hwnd
 
 
-def switch_to_window(title_substring: str) -> Optional[int]:
+def switch_to_window(title_substring: str) -> int | None:
     """Bring the first visible window whose title contains *title_substring* to the foreground.
 
     Returns the HWND on success, or None if no matching window is found.
