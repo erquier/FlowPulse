@@ -16,7 +16,7 @@ from flowpulse import __version__, win32_api, window_focus
 
 class TestVersion(unittest.TestCase):
     def test_version(self):
-        self.assertEqual(__version__, "1.1.0")
+        self.assertEqual(__version__, "1.2.0")
 
 
 class TestMovement(unittest.TestCase):

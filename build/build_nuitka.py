@@ -22,7 +22,7 @@ ENTRY_POINT = os.path.join(PROJECT_ROOT, "FlowPulse.py")
 APP_NAME = "FlowPulse"
 COMPANY_NAME = "Erqlabs"
 PRODUCT_NAME = "FlowPulse"
-FILE_VERSION = "1.1.0"
+FILE_VERSION = "1.2.0"
 FILE_DESCRIPTION = "FlowPulse — Human-like input simulation"
 
 NUITKA_FLAGS = [
