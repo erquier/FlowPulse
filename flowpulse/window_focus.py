@@ -43,8 +43,14 @@ def list_windows() -> List[Tuple[int, str]]:
     results: List[Tuple[int, str]] = []
     if not HAS_WIN32:
         return results
-    callback = _EnumWindowsProc(_enum_window_callback)
-    _EnumWindows(ctypes.cast(callback, ctypes.c_void_p), ctypes.py_object(results))  # type: ignore
+
+    # Capture `results` via closure rather than marshaling it through the
+    # EnumWindows LPARAM: LPARAM is a plain integer, so a ctypes.py_object
+    # passed there arrives in the callback as an int, not the original list.
+    def _callback(hwnd: int, _lparam: int) -> bool:
+        return _enum_window_callback(hwnd, results)
+
+    _EnumWindows(_EnumWindowsProc(_callback), 0)
     return results
 
 

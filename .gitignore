@@ -11,4 +11,5 @@ build/*.rc
 *.log
 .DS_Store
 venv/
+.venv/
 .env

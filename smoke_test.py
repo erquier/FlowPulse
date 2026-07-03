@@ -2,6 +2,13 @@
 """Quick smoke test for FlowPulse logic components."""
 import sys
 import os
+
+# Windows consoles often default to a legacy codepage (e.g. cp1252) that
+# can't encode the checkmark below; force UTF-8 so this runs the same in
+# a native Windows terminal as it does under CI's UTF-8 locale.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from flowpulse.config import Config

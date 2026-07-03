@@ -10,6 +10,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from flowpulse import __version__
+from flowpulse import window_focus
 
 
 class TestVersion(unittest.TestCase):
@@ -292,6 +293,113 @@ class TestDetector(unittest.TestCase):
         from flowpulse.detector import ActivityDetector
         det = ActivityDetector(timeout=60)
         self.assertEqual(det._timeout, 60)
+
+
+class TestWindowFocus(unittest.TestCase):
+    """Test window enumeration and focus rotation (platform-independent parts)."""
+
+    def test_list_windows_no_win32(self):
+        with patch.object(window_focus, "HAS_WIN32", False):
+            self.assertEqual(window_focus.list_windows(), [])
+
+    def test_rotate_no_win32(self):
+        with patch.object(window_focus, "HAS_WIN32", False):
+            self.assertIsNone(window_focus.rotate())
+
+    def test_switch_to_window_no_win32(self):
+        with patch.object(window_focus, "HAS_WIN32", False):
+            self.assertIsNone(window_focus.switch_to_window("anything"))
+
+    def test_rotate_fewer_than_two_windows(self):
+        with patch.object(window_focus, "HAS_WIN32", True), \
+                patch.object(window_focus, "list_windows", return_value=[(1, "Only One")]):
+            self.assertIsNone(window_focus.rotate())
+
+    def test_rotate_picks_and_focuses_a_window(self):
+        windows = [(111, "Window A"), (222, "Window B")]
+        with patch.object(window_focus, "HAS_WIN32", True), \
+                patch.object(window_focus, "list_windows", return_value=windows), \
+                patch.object(window_focus, "_SetForegroundWindow", create=True) as mock_set_fg:
+            hwnd = window_focus.rotate()
+        self.assertIn(hwnd, {111, 222})
+        mock_set_fg.assert_called_once_with(hwnd)
+
+    def test_switch_to_window_found(self):
+        windows = [(111, "Notepad"), (222, "Chrome - Browser")]
+        with patch.object(window_focus, "HAS_WIN32", True), \
+                patch.object(window_focus, "list_windows", return_value=windows), \
+                patch.object(window_focus, "_SetForegroundWindow", create=True) as mock_set_fg:
+            hwnd = window_focus.switch_to_window("chrome")
+        self.assertEqual(hwnd, 222)
+        mock_set_fg.assert_called_once_with(222)
+
+    def test_switch_to_window_not_found(self):
+        with patch.object(window_focus, "HAS_WIN32", True), \
+                patch.object(window_focus, "list_windows", return_value=[(1, "Notepad")]):
+            self.assertIsNone(window_focus.switch_to_window("nonexistent"))
+
+
+@unittest.skipUnless(window_focus.HAS_WIN32, "requires Windows ctypes bindings")
+class TestWindowFocusCallback(unittest.TestCase):
+    """Test the real ctypes EnumWindows callback wiring (Windows-only).
+
+    Regression coverage for a bug where `results` was marshaled through the
+    EnumWindows LPARAM as a ctypes.py_object; since the callback's declared
+    LPARAM type is a plain integer, `results` arrived inside the callback as
+    an int (not the original list), and `results.append(...)` crashed on
+    every window — silently, since ctypes swallows callback exceptions.
+    `list_windows()` returned `[]` unconditionally as a result.
+    """
+
+    @patch('flowpulse.window_focus._GetWindowTextW')
+    @patch('flowpulse.window_focus._GetWindowTextLengthW')
+    @patch('flowpulse.window_focus._IsWindowVisible')
+    def test_enum_window_callback_appends_visible_window(self, mock_visible, mock_len, mock_text):
+        mock_visible.return_value = True
+        mock_len.return_value = len("My Window")
+
+        def fake_get_text(hwnd, buf, length):
+            buf.value = "My Window"
+
+        mock_text.side_effect = fake_get_text
+        results = []
+        continue_enum = window_focus._enum_window_callback(123, results)
+        self.assertTrue(continue_enum)
+        self.assertEqual(results, [(123, "My Window")])
+
+    @patch('flowpulse.window_focus._IsWindowVisible')
+    def test_enum_window_callback_skips_invisible_window(self, mock_visible):
+        mock_visible.return_value = False
+        results = []
+        window_focus._enum_window_callback(456, results)
+        self.assertEqual(results, [])
+
+    @patch('flowpulse.window_focus._EnumWindows')
+    @patch('flowpulse.window_focus._GetWindowTextW')
+    @patch('flowpulse.window_focus._GetWindowTextLengthW')
+    @patch('flowpulse.window_focus._IsWindowVisible')
+    def test_list_windows_populates_results_via_real_callback_wiring(
+        self, mock_visible, mock_len, mock_text, mock_enum_windows
+    ):
+        mock_visible.return_value = True
+        mock_len.return_value = 5
+
+        def fake_get_text(hwnd, buf, length):
+            buf.value = f"Win{hwnd}"
+
+        mock_text.side_effect = fake_get_text
+
+        def fake_enum_windows(proc, lparam):
+            # Exercises the real _EnumWindowsProc-wrapped closure, the same
+            # way the real Win32 EnumWindows would invoke it per window.
+            proc(111, 0)
+            proc(222, 0)
+            return True
+
+        mock_enum_windows.side_effect = fake_enum_windows
+
+        result = window_focus.list_windows()
+        self.assertEqual(result, [(111, "Win111"), (222, "Win222")])
 
 
 class TestInputSim(unittest.TestCase):
